@@ -1,0 +1,29 @@
+services:
+  mimo-router:
+    build: .
+    container_name: mimo-api-key-router
+    restart: unless-stopped
+    ports:
+      - "4000:4000"
+    environment:
+      - NODE_ENV=production
+      - PORT=4000
+      - DATABASE_URL=file:/data/mimo-router.sqlite
+      - APP_ENCRYPTION_KEY=${APP_ENCRYPTION_KEY}
+      - INITIAL_ADMIN_PASSWORD=${INITIAL_ADMIN_PASSWORD}
+      - SESSION_SECRET=${SESSION_SECRET}
+      - TRUST_PROXY=true
+      - COOKIE_SECURE=false
+      - MIMO_OPENAI_BASE_URL=https://api.xiaomimimo.com/v1
+      - MIMO_ANTHROPIC_BASE_URL=https://api.xiaomimimo.com/anthropic
+    volumes:
+      - mimo-data:/data
+    healthcheck:
+      test: ["CMD", "./healthcheck.sh"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+volumes:
+  mimo-data:
