@@ -155,6 +155,8 @@ export const api = {
     }>>('/admin/keys'),
     create: (data: { label: string; key: string; priority: number; note?: string }) =>
       fetchJson<{ success: boolean }>('/admin/keys', { method: 'POST', body: JSON.stringify(data) }),
+    bulkCreate: (data: { keys: Array<{ label: string; key: string }>; startPriority?: number }) =>
+      fetchJson<{ success: boolean; count: number }>('/admin/keys/bulk', { method: 'POST', body: JSON.stringify(data) }),
     update: (id: string, data: { label?: string; priority?: number; note?: string }) =>
       fetchJson<{ success: boolean }>(`/admin/keys/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
     delete: (id: string) => fetchJson<{ success: boolean }>(`/admin/keys/${id}`, { method: 'DELETE' }),

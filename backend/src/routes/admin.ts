@@ -120,6 +120,48 @@ export async function registerAdminRoutes(app: FastifyInstance, db: Db) {
     return reply.status(201).send({ success: true });
   });
 
+  app.post('/admin/keys/bulk', async (request, reply) => {
+    const bulkSchema = z.object({
+      keys: z.array(z.object({
+        label: z.string().min(1).max(100),
+        key: z.string().min(1),
+      })),
+      startPriority: z.number().int().min(0).default(0),
+    });
+
+    const parsed = bulkSchema.safeParse(request.body);
+    if (!parsed.success) {
+      return reply.status(400).send({ error: 'Bad Request', message: parsed.error.message });
+    }
+
+    const { keys: items, startPriority } = parsed.data;
+
+    await db.transaction((tx) => {
+      // Shift all existing keys starting from startPriority by items.length
+      tx.update(apiKeys)
+        .set({ priority: sql`${apiKeys.priority} + ${items.length}` })
+        .where(sql`${apiKeys.priority} >= ${startPriority}`)
+        .run();
+
+      // Insert all keys with sequential priorities
+      for (let i = 0; i < items.length; i++) {
+        const item = items[i];
+        tx.insert(apiKeys).values({
+          id: crypto.randomUUID(),
+          label: item.label,
+          encryptedKey: encrypt(item.key, config.encryptionKey),
+          maskedKey: maskKey(item.key),
+          priority: startPriority + i,
+          status: 'active',
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        }).run();
+      }
+    });
+
+    return reply.status(201).send({ success: true, count: items.length });
+  });
+
   app.get('/admin/keys/:id', async (request, reply) => {
     const { id } = request.params as { id: string };
     const key = await db.query.apiKeys.findFirst({ where: eq(apiKeys.id, id) });

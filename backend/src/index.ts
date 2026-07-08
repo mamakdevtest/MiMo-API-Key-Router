@@ -53,6 +53,7 @@ try {
         scriptSrc: ["'self'", "'unsafe-inline'"],
         styleSrc: ["'self'", "'unsafe-inline'"],
         imgSrc: ["'self'", 'data:'],
+        upgradeInsecureRequests: config.cookieSecure ? [] : null,
       },
     },
   });

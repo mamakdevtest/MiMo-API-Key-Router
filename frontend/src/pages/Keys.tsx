@@ -23,6 +23,10 @@ export function Keys() {
   const [open, setOpen] = useState(false);
   const [newKey, setNewKey] = useState({ label: '', key: '', priority: 0, note: '' });
 
+  const [bulkOpen, setBulkOpen] = useState(false);
+  const [bulkText, setBulkText] = useState('');
+  const [bulkStartPriority, setBulkStartPriority] = useState(0);
+
   const { data: keys } = useQuery({ queryKey: ['keys'], queryFn: api.keys.list, refetchInterval: 5000 });
 
   const create = useMutation({
@@ -32,6 +36,18 @@ export function Keys() {
       setOpen(false);
       setNewKey({ label: '', key: '', priority: 0, note: '' });
       toast({ title: 'API key added' });
+    },
+    onError: (err: Error) => toast({ title: 'Error', description: err.message, variant: 'destructive' }),
+  });
+
+  const bulkCreate = useMutation({
+    mutationFn: api.keys.bulkCreate,
+    onSuccess: (res) => {
+      queryClient.invalidateQueries({ queryKey: ['keys'] });
+      setBulkOpen(false);
+      setBulkText('');
+      setBulkStartPriority(0);
+      toast({ title: `Bulk imported ${res.count} keys successfully` });
     },
     onError: (err: Error) => toast({ title: 'Error', description: err.message, variant: 'destructive' }),
   });
@@ -76,13 +92,113 @@ export function Keys() {
           <h1 className="text-3xl font-bold tracking-tight">API Keys</h1>
           <p className="text-muted-foreground">Manage your MiMo API keys and failover order.</p>
         </div>
-        <Dialog open={open} onOpenChange={setOpen}>
-          <DialogTrigger asChild>
-            <Button>
-              <Plus className="w-4 h-4 mr-2" />
-              Add Key
-            </Button>
-          </DialogTrigger>
+        <div className="flex items-center gap-2">
+          {/* Bulk Import Dialog */}
+          <Dialog open={bulkOpen} onOpenChange={setBulkOpen}>
+            <DialogTrigger asChild>
+              <Button variant="outline">
+                <Plus className="w-4 h-4 mr-2" />
+                Bulk Import
+              </Button>
+            </DialogTrigger>
+            <DialogContent className="sm:max-w-[500px]">
+              <DialogHeader>
+                <DialogTitle>Bulk Import API Keys</DialogTitle>
+              </DialogHeader>
+              <form
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  // Parse keys
+                  const lines = bulkText.split('\n');
+                  const parsedKeys: Array<{ label: string; key: string }> = [];
+                  let autoLabelCounter = 1;
+
+                  for (const line of lines) {
+                    const trimmed = line.trim();
+                    if (!trimmed) continue;
+
+                    // Parse Google Sheets pasted column(s).
+                    // If multiple columns, columns are separated by tabs ('\t').
+                    // Otherwise, we split by commas.
+                    if (trimmed.includes('\t')) {
+                      const parts = trimmed.split('\t');
+                      const label = parts[0].trim();
+                      const key = parts[1].trim();
+                      if (key) {
+                        parsedKeys.push({ label, key });
+                      }
+                    } else if (trimmed.includes(',')) {
+                      const parts = trimmed.split(',');
+                      const label = parts[0].trim();
+                      const key = parts[1].trim();
+                      if (key) {
+                        parsedKeys.push({ label, key });
+                      }
+                    } else {
+                      // Single key per line
+                      const keySuffix = trimmed.length > 8 ? trimmed.slice(-8) : trimmed;
+                      parsedKeys.push({
+                        label: `Imported Key ${autoLabelCounter++} (${keySuffix})`,
+                        key: trimmed,
+                      });
+                    }
+                  }
+
+                  if (parsedKeys.length === 0) {
+                    toast({ title: 'No valid keys found', variant: 'destructive' });
+                    return;
+                  }
+
+                  bulkCreate.mutate({
+                    keys: parsedKeys,
+                    startPriority: bulkStartPriority,
+                  });
+                }}
+                className="space-y-4"
+              >
+                <div className="space-y-2">
+                  <Label htmlFor="bulkText">Paste Column(s) from Google Sheets / Excel</Label>
+                  <textarea
+                    id="bulkText"
+                    value={bulkText}
+                    onChange={(e) => setBulkText(e.target.value)}
+                    required
+                    placeholder="sk-mimo-key-1&#10;sk-mimo-key-2&#10;&#10;OR&#10;&#10;Key Label 1&#9;sk-mimo-key-1&#10;Key Label 2&#9;sk-mimo-key-2"
+                    rows={8}
+                    className="flex min-h-[160px] w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm transition-colors file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Supports pasting a single column of keys, or two columns (Label and Key) separated by tabs.
+                  </p>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="bulkPriority">Insert Priority (0 = top)</Label>
+                  <Input
+                    id="bulkPriority"
+                    type="number"
+                    min={0}
+                    value={bulkStartPriority}
+                    onChange={(e) => setBulkStartPriority(parseInt(e.target.value) || 0)}
+                    required
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    The imported keys will occupy sequential priorities starting from this number, shifting other keys down.
+                  </p>
+                </div>
+                <Button type="submit" className="w-full" disabled={bulkCreate.isPending}>
+                  {bulkCreate.isPending ? 'Importing...' : `Import ${bulkText.split('\n').filter(l => l.trim()).length} Keys`}
+                </Button>
+              </form>
+            </DialogContent>
+          </Dialog>
+
+          <Dialog open={open} onOpenChange={setOpen}>
+            <DialogTrigger asChild>
+              <Button>
+                <Plus className="w-4 h-4 mr-2" />
+                Add Key
+              </Button>
+            </DialogTrigger>
           <DialogContent>
             <DialogHeader>
               <DialogTitle>Add MiMo API Key</DialogTitle>
@@ -113,6 +229,7 @@ export function Keys() {
           </DialogContent>
         </Dialog>
       </div>
+    </div>
 
       <Card>
         <CardHeader>
