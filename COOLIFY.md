@@ -89,7 +89,7 @@ Deploying via Docker Compose is the most flexible method. If you deploy using `b
 > **The Solution (Fast Deploys):**
 > Build the Docker image once (locally or using GitHub Actions) and push it to a Docker registry (e.g., Docker Hub, GitHub Container Registry). Then, reference the pre-built image in your `docker-compose.yaml` instead of building it from source. This reduces deploy time from minutes to **seconds**.
 
-### 3a. Pre-built Image docker-compose.yaml
+### 3a. Pres-built Image docker-compose.yaml
 If you have pushed your image (e.g., `ghcr.io/mamakdevtest/mimo-api-key-router:latest`), use this compose file:
 
 ```yaml
