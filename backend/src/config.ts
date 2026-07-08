@@ -8,10 +8,12 @@ dotenv.config({ path: path.resolve(__dirname, '../../.env') });
 
 const envSchema = z.object({
   NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
+  HOST: z.string().default('0.0.0.0'),
   PORT: z.string().default('4000').transform(Number),
   DATABASE_URL: z.string().default('file:./data.sqlite'),
   APP_ENCRYPTION_KEY: z.string().min(32),
   INITIAL_ADMIN_PASSWORD: z.string().min(1).optional(),
+  GATEWAY_KEY: z.string().min(8).optional(),
   TRUST_PROXY: z.string().default('false').transform((v) => v === 'true'),
   LOG_LEVEL: z.enum(['trace', 'debug', 'info', 'warn', 'error', 'fatal']).default('info'),
   SESSION_SECRET: z.string().min(32).default(() => {
@@ -38,6 +40,7 @@ const raw = parsed.data;
 
 export const config = {
   nodeEnv: raw.NODE_ENV,
+  host: raw.HOST,
   port: raw.PORT,
   databaseUrl: raw.DATABASE_URL.startsWith('file:')
     ? raw.DATABASE_URL.replace('file:', '')
@@ -45,6 +48,7 @@ export const config = {
   dataDir: path.dirname(raw.DATABASE_URL.replace('file:', '')),
   encryptionKey: raw.APP_ENCRYPTION_KEY,
   initialAdminPassword: raw.INITIAL_ADMIN_PASSWORD,
+  gatewayKey: raw.GATEWAY_KEY,
   trustProxy: raw.TRUST_PROXY,
   logLevel: raw.LOG_LEVEL,
   sessionSecret: raw.SESSION_SECRET,

@@ -90,44 +90,43 @@ mimo_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
 
 ---
 
-## 3. Deploy — Method B: Docker Compose
+## 3. Deploy — Method B: Docker Compose (Highly Recommended & Fast)
 
-If you prefer Docker Compose, create a `.env` file on the server and use docker-compose.
+Deploying via Docker Compose is the most flexible method. If you deploy using `build: .`, Coolify will compile the project from source inside your server. 
 
-### 3a. Create `.env` file on the server
+> [!WARNING]
+> **Why are builds slow on VPS?** 
+> Compiling frontend bundles (Vite + TypeScript type-checking) requires significant CPU and memory. On entry-level VPS servers, this process can take several minutes or fail due to memory limits.
+>
+> **The Solution (Fast Deploys):**
+> Build the Docker image once (locally or using GitHub Actions) and push it to a Docker registry (e.g., Docker Hub, GitHub Container Registry). Then, reference the pre-built image in your `docker-compose.yml` instead of building it from source. This reduces deploy time from minutes to **seconds**.
 
-```bash
-mkdir -p /data/mimo-router
-cd /data/mimo-router
-
-cat > .env << 'EOF'
-NODE_ENV=production
-PORT=4000
-DATABASE_URL=file:/data/mimo-router.sqlite
-APP_ENCRYPTION_KEY=your-random-32-char-string-here
-INITIAL_ADMIN_PASSWORD=your-strong-admin-password
-SESSION_SECRET=your-random-32-char-string-here
-TRUST_PROXY=true
-COOKIE_SECURE=true
-LOG_LEVEL=info
-SESSION_MAX_AGE_SECONDS=86400
-MIMO_OPENAI_BASE_URL=https://api.xiaomimimo.com/v1
-MIMO_ANTHROPIC_BASE_URL=https://api.xiaomimimo.com/anthropic
-EOF
-```
-
-### 3b. Create `docker-compose.yml`
+### 3a. Pre-built Image docker-compose.yml
+If you have pushed your image (e.g., `username/mimo-api-key-router:latest`), use this compose file:
 
 ```yaml
 services:
   mimo-router:
-    build: .
+    image: username/mimo-api-key-router:latest
     container_name: mimo-api-key-router
     restart: unless-stopped
     ports:
-      - "4000:4000"
-    env_file:
-      - .env
+      - "${HOST_IP:-0.0.0.0}:${PORT:-4000}:${PORT:-4000}"
+    environment:
+      - NODE_ENV=production
+      - HOST=${HOST:-0.0.0.0}
+      - PORT=${PORT:-4000}
+      - DATABASE_URL=${DATABASE_URL:-file:/data/mimo-router.sqlite}
+      - APP_ENCRYPTION_KEY=${APP_ENCRYPTION_KEY}
+      - INITIAL_ADMIN_PASSWORD=${INITIAL_ADMIN_PASSWORD}
+      - GATEWAY_KEY=${GATEWAY_KEY}
+      - SESSION_SECRET=${SESSION_SECRET}
+      - TRUST_PROXY=${TRUST_PROXY:-true}
+      - COOKIE_SECURE=${COOKIE_SECURE:-true}
+      - LOG_LEVEL=${LOG_LEVEL:-info}
+      - SESSION_MAX_AGE_SECONDS=${SESSION_MAX_AGE_SECONDS:-86400}
+      - MIMO_OPENAI_BASE_URL=${MIMO_OPENAI_BASE_URL:-https://api.xiaomimimo.com/v1}
+      - MIMO_ANTHROPIC_BASE_URL=${MIMO_ANTHROPIC_BASE_URL:-https://api.xiaomimimo.com/anthropic}
     volumes:
       - mimo-data:/data
     healthcheck:
@@ -141,25 +140,40 @@ volumes:
   mimo-data:
 ```
 
-### 3c. Build and run
+### 3b. How to Setup in Coolify Dashboard
 
-```bash
-cd /data/mimo-router
-docker compose up --build -d
+Follow these steps exactly in the Coolify UI to deploy this Docker Compose stack:
 
-# Check logs for gateway key
-docker compose logs -f mimo-router
-```
+1. **Create New Resource:**
+   - In the Coolify sidebar, click **Resources**.
+   - Click **+ New**.
+   - Select **Docker Compose**.
 
-### 3d. Coolify with Docker Compose
+2. **Paste Compose Configuration:**
+   - Under **Source**, choose **Raw Docker Compose** (or connect your git repo if building from source).
+   - Paste the contents of your `docker-compose.yml` into the editor.
+   - Click **Save**.
 
-If you want Coolify to manage a Docker Compose deployment:
+3. **Configure Domains & Reverse Proxy:**
+   - Go to the **General** tab of your new resource.
+   - Scroll down to **Domains**.
+   - Enter your domain: `https://api.ai.emirhanmamak.com` (Coolify handles Let's Encrypt HTTPS automatically).
+   - In the service port mappings, ensure the container port matches `4000`.
 
-1. Go to **Resources** → **New Resource**
-2. Select **Docker Compose** (not Git Repository)
-3. Upload your `docker-compose.yml`
-4. Set the same environment variables in Coolify
-5. Set domain and SSL as described in Method A
+4. **Define Environment Variables:**
+   - Go to the **Environment Variables** tab.
+   - Add the following keys:
+     - `APP_ENCRYPTION_KEY`: A secure 32+ character key.
+     - `INITIAL_ADMIN_PASSWORD`: Admin dashboard login password.
+     - `SESSION_SECRET`: Session cookie secret (32+ characters).
+     - `HOST_IP`: **Set this to the host IP you want the container to bind to** (e.g. `0.0.0.0` to listen on all interfaces, or `127.0.0.1` to restrict access through Coolify's reverse proxy only).
+     - `GATEWAY_KEY` *(Optional)*: **Set a static master gateway API key** (e.g. `mimo_yourcustomkey123`). If you provide this, no random key is printed on startup, and this key works immediately. If not provided, you can create and manage all keys dynamically from the admin panel under **Gateway Credentials**.
+     - `TRUST_PROXY`: `true`
+     - `COOKIE_SECURE`: `true` (Since we use HTTPS)
+
+5. **Deploy:**
+   - Click **Deploy** in the top right corner.
+   - The deployment will pull the pre-built image and start the container instantly.
 
 ---
 

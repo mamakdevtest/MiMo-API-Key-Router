@@ -114,8 +114,8 @@ try {
   });
 
   try {
-    await app.listen({ port: config.port, host: '0.0.0.0' });
-    app.log.info(`MiMo API Key Router listening on port ${config.port}`);
+    const address = await app.listen({ port: config.port, host: config.host });
+    app.log.info(`MiMo API Key Router listening on ${address}`);
   } catch (err) {
     app.log.error(err);
     process.exit(1);

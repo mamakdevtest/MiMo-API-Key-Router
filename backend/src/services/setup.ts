@@ -13,8 +13,12 @@ export async function setupAdmin(db: Db): Promise<string | undefined> {
     throw new Error('INITIAL_ADMIN_PASSWORD is required for first setup');
   }
 
-  const gatewayKey = generateSecureToken(32);
-  const gatewayKeyWithPrefix = `mimo_${gatewayKey}`;
+  let gatewayKeyWithPrefix = '';
+  if (config.gatewayKey) {
+    gatewayKeyWithPrefix = config.gatewayKey;
+  } else if (config.nodeEnv === 'test') {
+    gatewayKeyWithPrefix = `mimo_${generateSecureToken(32)}`;
+  }
 
   await db.insert(settings).values({
     id: 'default',
@@ -24,18 +28,17 @@ export async function setupAdmin(db: Db): Promise<string | undefined> {
     requestTimeoutSeconds: 120,
     ipAllowlist: '',
     publicModelIds: 'mimo-v2.5,mimo-v2.5-pro',
-    gatewayKeyHash: await hashGatewayKey(gatewayKeyWithPrefix),
+    gatewayKeyHash: gatewayKeyWithPrefix ? await hashGatewayKey(gatewayKeyWithPrefix) : '',
     adminPasswordHash: await hashPassword(adminPassword),
     createdAt: new Date(),
     updatedAt: new Date(),
   });
 
-  if (config.nodeEnv !== 'test') {
+  if (gatewayKeyWithPrefix && config.nodeEnv !== 'test') {
     console.log('\n========================================');
-    console.log('Gateway API Key (save this securely):');
-    console.log(gatewayKeyWithPrefix);
+    console.log('Gateway API Key loaded from environment.');
     console.log('========================================\n');
   }
 
-  return gatewayKeyWithPrefix;
+  return gatewayKeyWithPrefix || undefined;
 }

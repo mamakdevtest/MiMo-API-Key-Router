@@ -61,8 +61,13 @@ export function hashGatewayKey(key: string): Promise<string> {
   });
 }
 
-export function verifyGatewayKey(hash: string, key: string): Promise<boolean> {
-  return argon2.verify(hash, key);
+export async function verifyGatewayKey(hash: string, key: string): Promise<boolean> {
+  if (!hash || !hash.startsWith('$argon2')) return false;
+  try {
+    return await argon2.verify(hash, key);
+  } catch {
+    return false;
+  }
 }
 
 export function generateSecureToken(length = 48): string {
