@@ -6,16 +6,18 @@ services:
     ports:
       - "4000:4000"
     environment:
-      - NODE_ENV=production
-      - PORT=4000
-      - DATABASE_URL=file:/data/mimo-router.sqlite
+      - NODE_ENV=${NODE_ENV:-production}
+      - PORT=${PORT:-4000}
+      - DATABASE_URL=${DATABASE_URL:-file:/data/mimo-router.sqlite}
       - APP_ENCRYPTION_KEY=${APP_ENCRYPTION_KEY}
       - INITIAL_ADMIN_PASSWORD=${INITIAL_ADMIN_PASSWORD}
       - SESSION_SECRET=${SESSION_SECRET}
-      - TRUST_PROXY=true
-      - COOKIE_SECURE=false
-      - MIMO_OPENAI_BASE_URL=https://api.xiaomimimo.com/v1
-      - MIMO_ANTHROPIC_BASE_URL=https://api.xiaomimimo.com/anthropic
+      - TRUST_PROXY=${TRUST_PROXY:-true}
+      - COOKIE_SECURE=${COOKIE_SECURE:-false}
+      - LOG_LEVEL=${LOG_LEVEL:-info}
+      - SESSION_MAX_AGE_SECONDS=${SESSION_MAX_AGE_SECONDS:-86400}
+      - MIMO_OPENAI_BASE_URL=${MIMO_OPENAI_BASE_URL:-https://api.xiaomimimo.com/v1}
+      - MIMO_ANTHROPIC_BASE_URL=${MIMO_ANTHROPIC_BASE_URL:-https://api.xiaomimimo.com/anthropic}
     volumes:
       - mimo-data:/data
     healthcheck:
