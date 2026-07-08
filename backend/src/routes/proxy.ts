@@ -14,6 +14,54 @@ const ANTHROPIC_ALLOWLIST = new Set([
   'accept',
 ]);
 
+// MiMo V2.5 pricing (per 1M tokens) — overseas USD rates
+// Source: https://api.xiaomimimo.com (June 2026)
+const MODEL_PRICING: Record<string, { input: number; output: number }> = {
+  'mimo-v2.5-pro': { input: 0.435, output: 0.87 },
+  'mimo-v2.5': { input: 0.14, output: 0.28 },
+  'mimo-v2.5-asr': { input: 0.074, output: 0 },       // billed per hour of audio, shown as approximate
+  'mimo-v2.5-tts': { input: 0, output: 0 },            // free for limited time
+  'mimo-v2.5-tts-voiceclone': { input: 0, output: 0 },  // free for limited time
+  'mimo-v2.5-tts-voicedesign': { input: 0, output: 0 }, // free for limited time
+};
+
+function calculateCost(model: string, promptTokens: number, completionTokens: number): number {
+  const pricing = MODEL_PRICING[model];
+  if (!pricing) return 0;
+  const inputCost = (promptTokens / 1_000_000) * pricing.input;
+  const outputCost = (completionTokens / 1_000_000) * pricing.output;
+  return Math.round((inputCost + outputCost) * 10000) / 10000; // 4 decimal places
+}
+
+function extractTokenUsage(body: unknown): { promptTokens: number; completionTokens: number; totalTokens: number } {
+  if (!body || typeof body !== 'object') return { promptTokens: 0, completionTokens: 0, totalTokens: 0 };
+  const obj = body as Record<string, unknown>;
+
+  // OpenAI format: { usage: { prompt_tokens, completion_tokens, total_tokens } }
+  if (obj.usage && typeof obj.usage === 'object') {
+    const usage = obj.usage as Record<string, unknown>;
+    return {
+      promptTokens: (usage.prompt_tokens as number) || 0,
+      completionTokens: (usage.completion_tokens as number) || 0,
+      totalTokens: (usage.total_tokens as number) || 0,
+    };
+  }
+
+  // Anthropic format: { usage: { input_tokens, output_tokens } }
+  if (obj.usage && typeof obj.usage === 'object') {
+    const usage = obj.usage as Record<string, unknown>;
+    const inputTokens = (usage.input_tokens as number) || 0;
+    const outputTokens = (usage.output_tokens as number) || 0;
+    return {
+      promptTokens: inputTokens,
+      completionTokens: outputTokens,
+      totalTokens: inputTokens + outputTokens,
+    };
+  }
+
+  return { promptTokens: 0, completionTokens: 0, totalTokens: 0 };
+}
+
 function generateRequestId(): string {
   return crypto.randomUUID();
 }
@@ -207,20 +255,87 @@ async function proxyRequest(
         return reply.send();
       }
 
+      // Non-streaming: buffer response to extract token usage
+      if (!isStreaming) {
+        const responseText = await upstreamResponse.text();
+        let responseBody: unknown;
+        try {
+          responseBody = JSON.parse(responseText);
+        } catch {
+          responseBody = null;
+        }
+
+        const tokens = extractTokenUsage(responseBody);
+        const cost = calculateCost(model || '', tokens.promptTokens, tokens.completionTokens);
+
+        reply.header('content-type', upstreamResponse.headers.get('content-type') || 'application/json');
+        reply.send(responseText);
+
+        await logRequest(db, {
+          requestId,
+          route,
+          model,
+          apiKeyId: selected.id,
+          statusCode: upstreamResponse.status,
+          latencyMs: Date.now() - startTime,
+          streaming: false,
+          fallback,
+          clientIp,
+          promptTokens: tokens.promptTokens,
+          completionTokens: tokens.completionTokens,
+          totalTokens: tokens.totalTokens,
+          estimatedCost: cost,
+        });
+
+        return reply;
+      }
+
+      // Streaming: pipe through and try to extract usage from final chunks
       const reader = upstreamResponse.body.getReader();
       reply.raw.on('close', () => reader.cancel().catch(() => {}));
+
+      let lastChunks: string[] = [];
+      const MAX_BUFFER_CHUNKS = 5;
 
       try {
         while (true) {
           const { done, value } = await reader.read();
           if (done) break;
-          reply.raw.write(Buffer.from(value));
+          const chunk = Buffer.from(value);
+          reply.raw.write(chunk);
+
+          // Buffer last few chunks to extract usage from SSE stream
+          if (lastChunks.length >= MAX_BUFFER_CHUNKS) {
+            lastChunks.shift();
+          }
+          lastChunks.push(chunk.toString('utf-8'));
         }
       } catch (err) {
         request.log.warn({ err }, 'Stream interrupted');
       } finally {
         reader.releaseLock();
       }
+
+      // Try to extract token usage from buffered SSE chunks
+      let tokens = { promptTokens: 0, completionTokens: 0, totalTokens: 0 };
+      for (const chunk of lastChunks) {
+        const lines = chunk.split('\n');
+        for (const line of lines) {
+          if (line.startsWith('data: ') && line !== 'data: [DONE]') {
+            try {
+              const data = JSON.parse(line.slice(6));
+              const chunkTokens = extractTokenUsage(data);
+              if (chunkTokens.totalTokens > 0) {
+                tokens = chunkTokens;
+              }
+            } catch {
+              // ignore parse errors from partial chunks
+            }
+          }
+        }
+      }
+
+      const cost = calculateCost(model || '', tokens.promptTokens, tokens.completionTokens);
 
       await logRequest(db, {
         requestId,
@@ -229,9 +344,13 @@ async function proxyRequest(
         apiKeyId: selected.id,
         statusCode: upstreamResponse.status,
         latencyMs: Date.now() - startTime,
-        streaming: isStreaming,
+        streaming: true,
         fallback,
         clientIp,
+        promptTokens: tokens.promptTokens,
+        completionTokens: tokens.completionTokens,
+        totalTokens: tokens.totalTokens,
+        estimatedCost: cost,
       });
 
       return reply.raw.end();

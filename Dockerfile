@@ -1,22 +1,45 @@
 # syntax=docker/dockerfile:1
-FROM node:20-alpine AS base
 
-FROM base AS deps
+# ============================================================
+# Stage 1: Install ALL dependencies (cached unless package files change)
+# ============================================================
+FROM node:20-alpine AS deps
 RUN apk add --no-cache libc6-compat python3 make g++
 WORKDIR /app
+
+# Copy only package files first — this layer is cached
+# and only invalidated when package.json/lock changes
 COPY package.json package-lock.json* ./
 COPY backend/package.json ./backend/
 COPY frontend/package.json ./frontend/
 COPY shared/package.json ./shared/
 RUN npm ci
 
-FROM base AS builder
+# ============================================================
+# Stage 2: Build shared → frontend → backend
+# ============================================================
+FROM node:20-alpine AS builder
+RUN apk add --no-cache libc6-compat python3 make g++
 WORKDIR /app
-COPY --from=deps /app/node_modules ./node_modules
-COPY . .
-RUN npm run build
 
-FROM base AS runner
+# Copy installed node_modules from deps stage
+COPY --from=deps /app/node_modules ./node_modules
+
+# Copy source files (except what's in .dockerignore)
+COPY shared/ ./shared/
+COPY frontend/ ./frontend/
+COPY backend/ ./backend/
+COPY package.json tsconfig.json ./
+
+# Build in correct order: shared → frontend → backend
+RUN npm run build --workspace=shared
+RUN npm run build --workspace=frontend
+RUN npm run build --workspace=backend
+
+# ============================================================
+# Stage 3: Production runner (minimal image)
+# ============================================================
+FROM node:20-alpine AS runner
 RUN apk add --no-cache curl
 WORKDIR /app
 
@@ -24,16 +47,18 @@ ENV NODE_ENV=production
 ENV PORT=4000
 ENV DATABASE_URL=file:/data/mimo-router.sqlite
 
+# Create non-root user
 RUN addgroup --system --gid 1001 nodejs && adduser --system --uid 1001 router
 RUN mkdir -p /data && chown router:nodejs /data
 
+# Copy only production artifacts
 COPY --from=builder --chown=router:nodejs /app/backend/dist ./backend/dist
 COPY --from=builder --chown=router:nodejs /app/backend/drizzle ./backend/drizzle
+COPY --from=builder --chown=router:nodejs /app/backend/package.json ./backend/package.json
 COPY --from=builder --chown=router:nodejs /app/frontend/dist ./frontend/dist
 COPY --from=builder --chown=router:nodejs /app/shared/dist ./shared/dist
 COPY --from=builder --chown=router:nodejs /app/node_modules ./node_modules
 COPY --from=builder --chown=router:nodejs /app/package.json ./package.json
-COPY --from=builder --chown=router:nodejs /app/backend/package.json ./backend/package.json
 COPY --chown=router:nodejs healthcheck.sh ./healthcheck.sh
 RUN chmod +x ./healthcheck.sh
 

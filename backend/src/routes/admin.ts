@@ -2,8 +2,8 @@ import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import { eq, asc, sql, count, gte } from 'drizzle-orm';
 import { z } from 'zod';
 import { config } from '../config.js';
-import { encrypt, maskKey } from '../crypto/index.js';
-import { apiKeys, settings, requestLogs } from '../db/schema.js';
+import { encrypt, maskKey, hashGatewayKey, generateSecureToken } from '../crypto/index.js';
+import { apiKeys, settings, requestLogs, gatewayCredentials } from '../db/schema.js';
 import type { Db } from '../db/index.js';
 import { ALL_MODELS } from '@mimo/shared';
 
@@ -274,5 +274,180 @@ export async function registerAdminRoutes(app: FastifyInstance, db: Db) {
         clientIp: log.clientIp,
       }))
     );
+  });
+
+  // ── Usage Analytics ────────────────────────────────────────
+
+  app.get('/admin/usage', async (request, reply) => {
+    const { period } = request.query as { period?: string };
+    const now = new Date();
+    let since: Date;
+
+    switch (period) {
+      case '1h':
+        since = new Date(now.getTime() - 60 * 60 * 1000);
+        break;
+      case '24h':
+        since = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+        break;
+      case '7d':
+        since = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+        break;
+      case '30d':
+        since = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+        break;
+      default:
+        since = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+    }
+
+    // Usage by model
+    const byModel = await db
+      .select({
+        model: requestLogs.model,
+        requests: count(requestLogs.id),
+        totalTokens: sql<number>`coalesce(sum(${requestLogs.totalTokens}), 0)`,
+        promptTokens: sql<number>`coalesce(sum(${requestLogs.promptTokens}), 0)`,
+        completionTokens: sql<number>`coalesce(sum(${requestLogs.completionTokens}), 0)`,
+        estimatedCost: sql<number>`coalesce(sum(${requestLogs.estimatedCost}), 0)`,
+        avgLatency: sql<number>`coalesce(avg(${requestLogs.latencyMs}), 0)`,
+      })
+      .from(requestLogs)
+      .where(gte(requestLogs.timestamp, since))
+      .groupBy(requestLogs.model);
+
+    // Usage over time (hourly buckets)
+    const hourlyUsage = await db
+      .select({
+        hour: sql<string>`strftime('%Y-%m-%d %H:00', ${requestLogs.timestamp})`,
+        requests: count(requestLogs.id),
+        totalTokens: sql<number>`coalesce(sum(${requestLogs.totalTokens}), 0)`,
+        estimatedCost: sql<number>`coalesce(sum(${requestLogs.estimatedCost}), 0)`,
+      })
+      .from(requestLogs)
+      .where(gte(requestLogs.timestamp, since))
+      .groupBy(sql`strftime('%Y-%m-%d %d %H:00', ${requestLogs.timestamp})`);
+
+    // Totals
+    const [totals] = await db
+      .select({
+        totalRequests: count(requestLogs.id),
+        totalTokens: sql<number>`coalesce(sum(${requestLogs.totalTokens}), 0)`,
+        totalCost: sql<number>`coalesce(sum(${requestLogs.estimatedCost}), 0)`,
+        avgLatency: sql<number>`coalesce(avg(${requestLogs.latencyMs}), 0)`,
+      })
+      .from(requestLogs)
+      .where(gte(requestLogs.timestamp, since));
+
+    return reply.send({
+      period: period || '24h',
+      totals: {
+        requests: totals?.totalRequests ?? 0,
+        tokens: totals?.totalTokens ?? 0,
+        cost: Math.round((totals?.totalCost ?? 0) * 10000) / 10000,
+        avgLatency: Math.round(totals?.avgLatency ?? 0),
+      },
+      byModel: byModel.map((m) => ({
+        model: m.model || 'unknown',
+        requests: m.requests,
+        totalTokens: m.totalTokens,
+        promptTokens: m.promptTokens,
+        completionTokens: m.completionTokens,
+        estimatedCost: Math.round(m.estimatedCost * 10000) / 10000,
+        avgLatency: Math.round(m.avgLatency),
+      })),
+      hourly: hourlyUsage.map((h) => ({
+        hour: h.hour,
+        requests: h.requests,
+        totalTokens: h.totalTokens,
+        estimatedCost: Math.round(h.estimatedCost * 10000) / 10000,
+      })),
+    });
+  });
+
+  // ── Temporary Gateway Credentials ──────────────────────────
+
+  const createTempKeySchema = z.object({
+    label: z.string().min(1).max(100),
+    expiresInMinutes: z.number().int().min(1).max(43200).optional(), // max 30 days
+    maxRequests: z.number().int().min(1).max(100000).optional(),
+  });
+
+  app.get('/admin/temp-keys', async (_request, reply) => {
+    const rows = await db.query.gatewayCredentials.findMany({
+      orderBy: (gc, { desc }) => [desc(gc.createdAt)],
+    });
+    const now = new Date();
+    return reply.send(
+      rows.map((cred) => ({
+        id: cred.id,
+        label: cred.label,
+        maskedKey: cred.maskedKey,
+        expiresAt: cred.expiresAt?.toISOString() ?? null,
+        isExpired: cred.expiresAt ? now > new Date(cred.expiresAt) : false,
+        maxRequests: cred.maxRequests,
+        requestCount: cred.requestCount,
+        isActive: cred.isActive,
+        createdAt: cred.createdAt.toISOString(),
+      }))
+    );
+  });
+
+  app.post('/admin/temp-keys', async (request, reply) => {
+    const parsed = createTempKeySchema.safeParse(request.body);
+    if (!parsed.success) {
+      return reply.status(400).send({ error: 'Bad Request', message: parsed.error.message });
+    }
+
+    const { label, expiresInMinutes, maxRequests } = parsed.data;
+    const rawKey = `mimo_temp_${generateSecureToken(24)}`;
+    const keyHash = await hashGatewayKey(rawKey);
+    const now = new Date();
+
+    const credential = await db.insert(gatewayCredentials).values({
+      id: crypto.randomUUID(),
+      label,
+      keyHash,
+      maskedKey: maskKey(rawKey),
+      expiresAt: expiresInMinutes ? new Date(now.getTime() + expiresInMinutes * 60 * 1000) : null,
+      maxRequests: maxRequests ?? null,
+      requestCount: 0,
+      isActive: true,
+      createdAt: now,
+      updatedAt: now,
+    }).returning();
+
+    return reply.status(201).send({
+      id: credential[0].id,
+      key: rawKey, // shown once only
+      label,
+      maskedKey: maskKey(rawKey),
+      expiresAt: credential[0].expiresAt?.toISOString() ?? null,
+      maxRequests,
+      message: 'Copy this key now. It will not be shown again.',
+    });
+  });
+
+  app.delete('/admin/temp-keys/:id', async (request, reply) => {
+    const { id } = request.params as { id: string };
+    await db.delete(gatewayCredentials).where(eq(gatewayCredentials.id, id));
+    return reply.send({ success: true });
+  });
+
+  app.post('/admin/temp-keys/:id/revoke', async (request, reply) => {
+    const { id } = request.params as { id: string };
+    await db
+      .update(gatewayCredentials)
+      .set({ isActive: false, updatedAt: new Date() })
+      .where(eq(gatewayCredentials.id, id));
+    return reply.send({ success: true });
+  });
+
+  app.post('/admin/temp-keys/:id/reactivate', async (request, reply) => {
+    const { id } = request.params as { id: string };
+    await db
+      .update(gatewayCredentials)
+      .set({ isActive: true, updatedAt: new Date() })
+      .where(eq(gatewayCredentials.id, id));
+    return reply.send({ success: true });
   });
 }

@@ -11,6 +11,10 @@ export interface LogEntry {
   streaming: boolean;
   fallback: boolean;
   clientIp?: string | null;
+  promptTokens?: number;
+  completionTokens?: number;
+  totalTokens?: number;
+  estimatedCost?: number;
 }
 
 export async function logRequest(db: Db, entry: LogEntry) {
@@ -26,5 +30,9 @@ export async function logRequest(db: Db, entry: LogEntry) {
     streaming: entry.streaming,
     fallback: entry.fallback,
     clientIp: entry.clientIp ?? null,
+    promptTokens: entry.promptTokens ?? 0,
+    completionTokens: entry.completionTokens ?? 0,
+    totalTokens: entry.totalTokens ?? 0,
+    estimatedCost: entry.estimatedCost ?? 0,
   });
 }

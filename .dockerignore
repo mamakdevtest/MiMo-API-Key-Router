@@ -1,0 +1,45 @@
+node_modules
+dist
+build
+.git
+.gitignore
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# Database
+*.sqlite
+*.sqlite3
+*.sqlite-journal
+*.sqlite-wal
+*.sqlite-shm
+/data/
+
+# IDE
+.idea
+.vscode
+*.swp
+*.swo
+
+# Testing
+coverage
+.nyc_output
+*.test.ts
+*.test.js
+
+# Documentation
+docs/
+*.md
+!README.md
+
+# Claude Code
+.claude/
+
+# Misc
+.DS_Store
+Thumbs.db
+.cache
+.temp
+tmp

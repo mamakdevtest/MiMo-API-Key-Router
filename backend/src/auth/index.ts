@@ -2,7 +2,7 @@ import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import { eq } from 'drizzle-orm';
 import { config } from '../config.js';
 import { verifyGatewayKey, verifyPassword, hashPassword, hashGatewayKey, generateSecureToken } from '../crypto/index.js';
-import { settings, adminSessions } from '../db/schema.js';
+import { settings, adminSessions, gatewayCredentials } from '../db/schema.js';
 import type { Db } from '../db/index.js';
 
 const SESSION_COOKIE = 'admin_session';
@@ -125,9 +125,43 @@ export async function registerAuth(app: FastifyInstance, db: Db) {
       return reply.status(401).send({ error: 'Unauthorized' });
     }
 
+    // Check main gateway key first
     const valid = await verifyGatewayKey(setting.gatewayKeyHash, token);
+
     if (!valid) {
-      return reply.status(401).send({ error: 'Unauthorized', message: 'Invalid gateway key' });
+      // Check temporary credentials
+      const tempCreds = await db.query.gatewayCredentials.findMany({
+        where: (gc, { eq, and }) => and(eq(gc.isActive, true)),
+      });
+
+      let tempValid = false;
+      let tempCred: typeof tempCreds[number] | undefined;
+
+      for (const cred of tempCreds) {
+        if (await verifyGatewayKey(cred.keyHash, token)) {
+          tempCred = cred;
+          tempValid = true;
+          break;
+        }
+      }
+
+      if (tempValid && tempCred) {
+        // Check expiry
+        if (tempCred.expiresAt && new Date() > new Date(tempCred.expiresAt)) {
+          return reply.status(401).send({ error: 'Unauthorized', message: 'Temporary key expired' });
+        }
+        // Check request limit
+        if (tempCred.maxRequests && tempCred.requestCount >= tempCred.maxRequests) {
+          return reply.status(401).send({ error: 'Unauthorized', message: 'Temporary key request limit reached' });
+        }
+        // Increment request count
+        await db
+          .update(gatewayCredentials)
+          .set({ requestCount: tempCred.requestCount + 1, updatedAt: new Date() })
+          .where(eq(gatewayCredentials.id, tempCred.id));
+      } else {
+        return reply.status(401).send({ error: 'Unauthorized', message: 'Invalid gateway key' });
+      }
     }
 
     if (setting.ipAllowlist.trim()) {

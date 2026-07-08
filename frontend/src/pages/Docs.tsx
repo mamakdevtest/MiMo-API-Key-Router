@@ -76,19 +76,77 @@ export function Docs() {
         <CardHeader>
           <CardTitle>Claude Code</CardTitle>
         </CardHeader>
-        <CardContent className="space-y-4">
-          <p className="text-sm text-muted-foreground">
-            Set these environment variables before running Claude Code:
-          </p>
-          <CopyBox
-            label="Environment variables"
-            text={`ANTHROPIC_BASE_URL=${baseUrl}
-ANTHROPIC_AUTH_TOKEN=${gatewayKey}
-ANTHROPIC_MODEL=mimo-v2.5-pro
-ANTHROPIC_DEFAULT_SONNET_MODEL=mimo-v2.5-pro
-ANTHROPIC_DEFAULT_OPUS_MODEL=mimo-v2.5-pro
-ANTHROPIC_DEFAULT_HAIKU_MODEL=mimo-v2.5`}
-          />
+        <CardContent className="space-y-6">
+          <div>
+            <p className="text-sm font-medium mb-2">Method 1: Environment Variables</p>
+            <p className="text-sm text-muted-foreground mb-3">
+              Set these before running Claude Code:
+            </p>
+            <CopyBox
+              label="Shell environment variables"
+              text={`export ANTHROPIC_BASE_URL=${baseUrl}
+export ANTHROPIC_AUTH_TOKEN=${gatewayKey}
+export ANTHROPIC_MODEL=mimo-v2.5-pro
+export ANTHROPIC_DEFAULT_SONNET_MODEL=mimo-v2.5-pro
+export ANTHROPIC_DEFAULT_OPUS_MODEL=mimo-v2.5-pro
+export ANTHROPIC_DEFAULT_HAIKU_MODEL=mimo-v2.5`}
+            />
+          </div>
+
+          <div className="border-t pt-4">
+            <p className="text-sm font-medium mb-2">Method 2: Project settings.json (Recommended)</p>
+            <p className="text-sm text-muted-foreground mb-3">
+              Create <code>.claude/settings.json</code> in your project root. This persists across sessions.
+            </p>
+            <CopyBox
+              label=".claude/settings.json"
+              text={JSON.stringify({
+                env: {
+                  ANTHROPIC_BASE_URL: baseUrl,
+                  ANTHROPIC_AUTH_TOKEN: gatewayKey,
+                  ANTHROPIC_MODEL: "mimo-v2.5-pro",
+                  ANTHROPIC_DEFAULT_SONNET_MODEL: "mimo-v2.5-pro",
+                  ANTHROPIC_DEFAULT_OPUS_MODEL: "mimo-v2.5-pro",
+                  ANTHROPIC_DEFAULT_HAIKU_MODEL: "mimo-v2.5"
+                }
+              }, null, 2)}
+            />
+          </div>
+
+          <div className="border-t pt-4">
+            <p className="text-sm font-medium mb-2">Available Models & Pricing</p>
+            <div className="space-y-2 text-sm">
+              <div className="p-2 rounded bg-muted flex justify-between">
+                <span><code>mimo-v2.5-pro</code> — Advanced chat</span>
+                <span className="text-muted-foreground">$0.435/M in · $0.87/M out</span>
+              </div>
+              <div className="p-2 rounded bg-muted flex justify-between">
+                <span><code>mimo-v2.5</code> — General chat</span>
+                <span className="text-muted-foreground">$0.14/M in · $0.28/M out</span>
+              </div>
+              <div className="p-2 rounded bg-muted flex justify-between">
+                <span><code>mimo-v2.5-asr</code> — Speech recognition</span>
+                <span className="text-muted-foreground">$0.074/h audio</span>
+              </div>
+              <div className="p-2 rounded bg-muted flex justify-between">
+                <span><code>mimo-v2.5-tts</code> — Text-to-speech</span>
+                <span className="text-green-500">Free (limited time)</span>
+              </div>
+              <div className="p-2 rounded bg-muted flex justify-between">
+                <span><code>mimo-v2.5-tts-voiceclone</code> — Voice cloning</span>
+                <span className="text-green-500">Free (limited time)</span>
+              </div>
+              <div className="p-2 rounded bg-muted flex justify-between">
+                <span><code>mimo-v2.5-tts-voicedesign</code> — Voice design</span>
+                <span className="text-green-500">Free (limited time)</span>
+              </div>
+            </div>
+            <p className="text-xs text-muted-foreground mt-2">
+              Only public models (toggled in Settings) appear in <code>/v1/models</code>.
+              All models can be used directly by ID.
+            </p>
+          </div>
+
           <p className="text-sm text-muted-foreground">
             Then start Claude Code normally. It will use your router as the Anthropic endpoint.
           </p>

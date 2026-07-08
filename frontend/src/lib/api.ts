@@ -16,12 +16,16 @@ async function fetchJson<T>(path: string, options: RequestInit = {}): Promise<T>
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 10000);
 
+  const hasBody = options.body !== undefined && options.body !== null;
+  const method = (options.method || 'GET').toUpperCase();
+
   try {
     const res = await fetch(`${API_BASE}${path}`, {
       ...options,
+      method,
       signal: controller.signal,
       headers: {
-        'Content-Type': 'application/json',
+        ...(hasBody ? { 'Content-Type': 'application/json' } : {}),
         'X-CSRF-Token': getCsrfToken(),
         ...options.headers,
       },
@@ -99,7 +103,7 @@ async function fetchAuth<T>(path: string, options: RequestInit = {}): Promise<T>
 
 export const api = {
   login: (password: string) => fetchJson<{ success: boolean; csrfToken?: string }>('/admin/login', { method: 'POST', body: JSON.stringify({ password }) }),
-  logout: () => fetchJson<{ success: boolean }>('/admin/logout', { method: 'POST' }),
+  logout: () => fetchJson<{ success: boolean }>('/admin/logout', { method: 'POST', body: '{}' }),
   me: () => fetchAuth<{ authenticated: boolean; csrfToken?: string }>('/admin/me'),
   dashboard: () => fetchJson<{
     gatewayStatus: string;
@@ -110,6 +114,30 @@ export const api = {
     requestsLast24h: number;
     successRate: number;
   }>('/admin/dashboard'),
+  usage: (period = '24h') => fetchJson<{
+    period: string;
+    totals: {
+      requests: number;
+      tokens: number;
+      cost: number;
+      avgLatency: number;
+    };
+    byModel: Array<{
+      model: string;
+      requests: number;
+      totalTokens: number;
+      promptTokens: number;
+      completionTokens: number;
+      estimatedCost: number;
+      avgLatency: number;
+    }>;
+    hourly: Array<{
+      hour: string;
+      requests: number;
+      totalTokens: number;
+      estimatedCost: number;
+    }>;
+  }>(`/admin/usage?period=${period}`),
   keys: {
     list: () => fetchJson<Array<{
       id: string;
@@ -130,9 +158,9 @@ export const api = {
     update: (id: string, data: { label?: string; priority?: number; note?: string }) =>
       fetchJson<{ success: boolean }>(`/admin/keys/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
     delete: (id: string) => fetchJson<{ success: boolean }>(`/admin/keys/${id}`, { method: 'DELETE' }),
-    enable: (id: string) => fetchJson<{ success: boolean }>(`/admin/keys/${id}/enable`, { method: 'POST' }),
-    disable: (id: string) => fetchJson<{ success: boolean }>(`/admin/keys/${id}/disable`, { method: 'POST' }),
-    reset: (id: string) => fetchJson<{ success: boolean }>(`/admin/keys/${id}/reset`, { method: 'POST' }),
+    enable: (id: string) => fetchJson<{ success: boolean }>(`/admin/keys/${id}/enable`, { method: 'POST', body: '{}' }),
+    disable: (id: string) => fetchJson<{ success: boolean }>(`/admin/keys/${id}/disable`, { method: 'POST', body: '{}' }),
+    reset: (id: string) => fetchJson<{ success: boolean }>(`/admin/keys/${id}/reset`, { method: 'POST', body: '{}' }),
     move: (id: string, direction: 'up' | 'down') =>
       fetchJson<{ success: boolean }>(`/admin/keys/${id}/move`, { method: 'POST', body: JSON.stringify({ direction }) }),
   },
@@ -157,7 +185,7 @@ export const api = {
   models: {
     list: () => fetchJson<Array<{ id: string; name: string; description: string; public: boolean }>>('/admin/models'),
   },
-  rotateGatewayKey: () => fetchJson<{ key: string }>('/admin/rotate-gateway-key', { method: 'POST' }),
+  rotateGatewayKey: () => fetchJson<{ key: string }>('/admin/rotate-gateway-key', { method: 'POST', body: '{}' }),
   changePassword: (currentPassword: string, newPassword: string) =>
     fetchJson<{ success: boolean }>('/admin/change-password', { method: 'POST', body: JSON.stringify({ currentPassword, newPassword }) }),
   logs: {
@@ -175,5 +203,32 @@ export const api = {
         fallback: boolean;
         clientIp: string | null;
       }>>(`/admin/logs?limit=${limit}&offset=${offset}`),
+  },
+  tempKeys: {
+    list: () =>
+      fetchJson<Array<{
+        id: string;
+        label: string;
+        maskedKey: string;
+        expiresAt: string | null;
+        isExpired: boolean;
+        maxRequests: number | null;
+        requestCount: number;
+        isActive: boolean;
+        createdAt: string;
+      }>>('/admin/temp-keys'),
+    create: (data: { label: string; expiresInMinutes?: number; maxRequests?: number }) =>
+      fetchJson<{
+        id: string;
+        key: string;
+        label: string;
+        maskedKey: string;
+        expiresAt: string | null;
+        maxRequests: number | null;
+        message: string;
+      }>('/admin/temp-keys', { method: 'POST', body: JSON.stringify(data) }),
+    delete: (id: string) => fetchJson<{ success: boolean }>(`/admin/temp-keys/${id}`, { method: 'DELETE' }),
+    revoke: (id: string) => fetchJson<{ success: boolean }>(`/admin/temp-keys/${id}/revoke`, { method: 'POST', body: '{}' }),
+    reactivate: (id: string) => fetchJson<{ success: boolean }>(`/admin/temp-keys/${id}/reactivate`, { method: 'POST', body: '{}' }),
   },
 };

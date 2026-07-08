@@ -8,6 +8,20 @@
       "when": 1783445450350,
       "tag": "0000_workable_stingray",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "6",
+      "when": 1783512118451,
+      "tag": "0001_real_ender_wiggin",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1783514587108,
+      "tag": "0002_panoramic_bloodstorm",
+      "breakpoints": true
     }
   ]
 }

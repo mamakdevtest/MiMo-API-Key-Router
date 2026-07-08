@@ -97,16 +97,35 @@ You can rotate the gateway key from the admin dashboard. The old key becomes inv
 
 ## 7. Claude Code Configuration
 
-Set these environment variables for Claude Code:
+### Method 1: Environment Variables
 
 ```bash
-ANTHROPIC_BASE_URL=https://api.ai.emirhanmamak.com
-ANTHROPIC_AUTH_TOKEN=<GATEWAY_API_KEY>
-ANTHROPIC_MODEL=mimo-v2.5-pro
-ANTHROPIC_DEFAULT_SONNET_MODEL=mimo-v2.5-pro
-ANTHROPIC_DEFAULT_OPUS_MODEL=mimo-v2.5-pro
-ANTHROPIC_DEFAULT_HAIKU_MODEL=mimo-v2.5
+export ANTHROPIC_BASE_URL=https://api.ai.emirhanmamak.com
+export ANTHROPIC_AUTH_TOKEN=<GATEWAY_API_KEY>
+export ANTHROPIC_MODEL=mimo-v2.5-pro
+export ANTHROPIC_DEFAULT_SONNET_MODEL=mimo-v2.5-pro
+export ANTHROPIC_DEFAULT_OPUS_MODEL=mimo-v2.5-pro
+export ANTHROPIC_DEFAULT_HAIKU_MODEL=mimo-v2.5
 ```
+
+### Method 2: Project settings.json (Recommended)
+
+Create `.claude/settings.json` in your project root:
+
+```json
+{
+  "env": {
+    "ANTHROPIC_BASE_URL": "https://api.ai.emirhanmamak.com",
+    "ANTHROPIC_AUTH_TOKEN": "<GATEWAY_API_KEY>",
+    "ANTHROPIC_MODEL": "mimo-v2.5-pro",
+    "ANTHROPIC_DEFAULT_SONNET_MODEL": "mimo-v2.5-pro",
+    "ANTHROPIC_DEFAULT_OPUS_MODEL": "mimo-v2.5-pro",
+    "ANTHROPIC_DEFAULT_HAIKU_MODEL": "mimo-v2.5"
+  }
+}
+```
+
+Then start Claude Code normally. It will use your router as the Anthropic endpoint.
 
 ## 8. Open WebUI Configuration
 
