@@ -1,0 +1,26 @@
+{
+  "model": "qwen2.5-coder:14b",
+
+  "availableModels": [
+    "vercel.xiaomi/mimo-v2.5-pro",
+    "qwen2.5-coder:7b",
+    "mimo-v2.5"
+  ],
+  "enforceAvailableModels": true,
+
+  "env": {
+    "ANTHROPIC_BASE_URL": "https://ai.emirhanmamak.com/api",
+    "ANTHROPIC_AUTH_TOKEN": "sk-c5f762abd4a34b488042a193298496e7",
+
+    "ANTHROPIC_DEFAULT_SONNET_MODEL": "vercel.xiaomi/mimo-v2.5-pro",
+    "ANTHROPIC_DEFAULT_OPUS_MODEL": "mimo-v2.5",
+    "ANTHROPIC_DEFAULT_HAIKU_MODEL": "qwen2.5-coder:14b",
+    "ANTHROPIC_DEFAULT_FABLE_MODEL": "qwen2.5-coder:14b",
+
+    "ANTHROPIC_CUSTOM_MODEL_OPTION": "qwen2.5-coder:14b",
+    "ANTHROPIC_CUSTOM_MODEL_OPTION_NAME": "Qwen 2.5 Coder 14B (Open WebUI)",
+    "ANTHROPIC_CUSTOM_MODEL_OPTION_DESCRIPTION": "Local coding model routed through Open WebUI",
+
+    "CLAUDE_CODE_SUBAGENT_MODEL": "inherit"
+  }
+}

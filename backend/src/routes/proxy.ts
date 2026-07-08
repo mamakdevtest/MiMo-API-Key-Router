@@ -10,7 +10,6 @@ const ANTHROPIC_ALLOWLIST = new Set([
   'anthropic-version',
   'anthropic-beta',
   'x-claude-code-*',
-  'x-api-key',
   'content-type',
   'accept',
 ]);
@@ -49,7 +48,6 @@ function buildAnthropicHeaders(request: FastifyRequest, upstreamKey: string): Re
     if (value === undefined) continue;
     const lower = key.toLowerCase();
     if (!isAnthropicHeaderAllowed(lower)) continue;
-    if (lower === 'x-api-key') continue;
     if (Array.isArray(value)) {
       headers[key] = value.join(', ');
     } else {

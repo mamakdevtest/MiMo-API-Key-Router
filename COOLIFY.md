@@ -40,4 +40,4 @@ MIMO_ANTHROPIC_BASE_URL=https://api.xiaomimimo.com/anthropic
 ## 7. Reverse Proxy
 - Coolify acts as the reverse proxy and terminates HTTPS.
 - `TRUST_PROXY=true` ensures `X-Forwarded-For` is used safely for IP allowlist.
-- Do not expose port 3000 directly to the internet.
+- Do not expose port 4000 directly to the internet.

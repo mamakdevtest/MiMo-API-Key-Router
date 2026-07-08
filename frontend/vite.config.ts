@@ -12,8 +12,9 @@ export default defineConfig({
   server: {
     port: 4173,
     proxy: {
-      '/api': 'http://localhost:4000',
       '/admin': 'http://localhost:4000',
+      '/v1': 'http://localhost:4000',
+      '/health': 'http://localhost:4000',
     },
   },
   build: {

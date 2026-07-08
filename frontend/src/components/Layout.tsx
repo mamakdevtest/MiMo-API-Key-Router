@@ -1,5 +1,5 @@
 import { Link, useLocation } from 'react-router-dom';
-import { LayoutDashboard, KeyRound, Settings, LogOut, BookOpen } from 'lucide-react';
+import { LayoutDashboard, KeyRound, Settings, LogOut, BookOpen, ScrollText } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useAuth } from '@/hooks/useAuth';
 
@@ -11,6 +11,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
     { path: '/', label: 'Dashboard', icon: LayoutDashboard },
     { path: '/keys', label: 'API Keys', icon: KeyRound },
     { path: '/settings', label: 'Settings', icon: Settings },
+    { path: '/logs', label: 'Logs', icon: ScrollText },
     { path: '/docs', label: 'Docs', icon: BookOpen },
   ];
 

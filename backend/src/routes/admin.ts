@@ -47,13 +47,6 @@ function toKeyResponse(key: typeof apiKeys.$inferSelect) {
 }
 
 export async function registerAdminRoutes(app: FastifyInstance, db: Db) {
-  app.addHook('onRequest', async (request, reply) => {
-    if (!request.url.startsWith('/admin/')) return;
-    if (request.url === '/admin/login' || request.url === '/admin/logout' || request.url === '/admin/me') return;
-    if (!request.adminSession) {
-      return reply.status(401).send({ error: 'Unauthorized' });
-    }
-  });
 
   app.get('/admin/dashboard', async (request, reply) => {
     const now = new Date();

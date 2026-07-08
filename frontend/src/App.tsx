@@ -6,6 +6,7 @@ import { Dashboard } from './pages/Dashboard';
 import { Keys } from './pages/Keys';
 import { Settings } from './pages/Settings';
 import { Docs } from './pages/Docs';
+import { Logs } from './pages/Logs';
 import { Toaster } from './components/ui/toaster';
 import { Button } from './components/ui/button';
 
@@ -51,6 +52,7 @@ function App() {
           <Route path="/" element={<Dashboard />} />
           <Route path="/keys" element={<Keys />} />
           <Route path="/settings" element={<Settings />} />
+          <Route path="/logs" element={<Logs />} />
           <Route path="/docs" element={<Docs />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>

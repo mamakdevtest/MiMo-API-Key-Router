@@ -160,4 +160,20 @@ export const api = {
   rotateGatewayKey: () => fetchJson<{ key: string }>('/admin/rotate-gateway-key', { method: 'POST' }),
   changePassword: (currentPassword: string, newPassword: string) =>
     fetchJson<{ success: boolean }>('/admin/change-password', { method: 'POST', body: JSON.stringify({ currentPassword, newPassword }) }),
+  logs: {
+    list: (limit = 100, offset = 0) =>
+      fetchJson<Array<{
+        id: string;
+        requestId: string;
+        timestamp: string;
+        route: string;
+        model: string | null;
+        apiKeyId: string | null;
+        statusCode: number | null;
+        latencyMs: number;
+        streaming: boolean;
+        fallback: boolean;
+        clientIp: string | null;
+      }>>(`/admin/logs?limit=${limit}&offset=${offset}`),
+  },
 };

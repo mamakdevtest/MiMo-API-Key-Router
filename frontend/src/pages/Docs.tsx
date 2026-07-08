@@ -5,9 +5,6 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Copy, Check, ExternalLink } from 'lucide-react';
 
-const DOMAIN = 'api.ai.emirhanmamak.com';
-const BASE_URL = `https://${DOMAIN}`;
-
 function CopyBox({ text, label }: { text: string; label: string }) {
   const [copied, setCopied] = useState(false);
 
@@ -34,6 +31,12 @@ function CopyBox({ text, label }: { text: string; label: string }) {
 export function Docs() {
   const [gatewayKey, setGatewayKey] = useState('<YOUR_GATEWAY_API_KEY>');
 
+  // Dynamically detect the server's base URL from the current browser location.
+  // This works whether accessed via domain (api.example.com),
+  // IP (http://1.2.3.4:4000), or localhost (http://localhost:4000).
+  const origin = typeof window !== 'undefined' ? window.location.origin : 'https://api.ai.emirhanmamak.com';
+  const baseUrl = origin;
+
   return (
     <div className="space-y-8 max-w-4xl">
       <div>
@@ -48,9 +51,13 @@ export function Docs() {
           <CardTitle>Your Router Details</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
-          <CopyBox label="Base URL" text={BASE_URL} />
-          <CopyBox label="OpenAI Endpoint" text={`${BASE_URL}/v1`} />
-          <CopyBox label="Anthropic Endpoint" text={BASE_URL} />
+          <div className="p-3 rounded-md bg-muted">
+            <p className="text-xs text-muted-foreground mb-1">Detected Server</p>
+            <p className="text-sm font-mono">{baseUrl}</p>
+          </div>
+          <CopyBox label="Base URL" text={baseUrl} />
+          <CopyBox label="OpenAI Endpoint" text={`${baseUrl}/v1`} />
+          <CopyBox label="Anthropic Endpoint" text={baseUrl} />
           <div className="space-y-2">
             <label className="text-sm font-medium text-muted-foreground">Gateway API Key</label>
             <Input
@@ -75,7 +82,7 @@ export function Docs() {
           </p>
           <CopyBox
             label="Environment variables"
-            text={`ANTHROPIC_BASE_URL=${BASE_URL}
+            text={`ANTHROPIC_BASE_URL=${baseUrl}
 ANTHROPIC_AUTH_TOKEN=${gatewayKey}
 ANTHROPIC_MODEL=mimo-v2.5-pro
 ANTHROPIC_DEFAULT_SONNET_MODEL=mimo-v2.5-pro
@@ -100,7 +107,7 @@ ANTHROPIC_DEFAULT_HAIKU_MODEL=mimo-v2.5`}
           </ol>
           <CopyBox
             label="Connection settings"
-            text={`OpenAI Base URL: ${BASE_URL}/v1
+            text={`OpenAI Base URL: ${baseUrl}/v1
 API Key: ${gatewayKey}`}
           />
           <p className="text-sm text-muted-foreground">
@@ -116,7 +123,7 @@ API Key: ${gatewayKey}`}
         <CardContent className="space-y-4">
           <CopyBox
             label="cURL example"
-            text={`curl ${BASE_URL}/v1/chat/completions \\
+            text={`curl ${baseUrl}/v1/chat/completions \\
   -H "Authorization: Bearer ${gatewayKey}" \\
   -H "Content-Type: application/json" \\
   -d '{
@@ -134,7 +141,7 @@ API Key: ${gatewayKey}`}
         <CardContent className="space-y-4">
           <CopyBox
             label="cURL example"
-            text={`curl ${BASE_URL}/v1/messages \\
+            text={`curl ${baseUrl}/v1/messages \\
   -H "Authorization: Bearer ${gatewayKey}" \\
   -H "Content-Type: application/json" \\
   -H "anthropic-version: 2023-06-01" \\
