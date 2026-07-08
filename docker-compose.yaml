@@ -4,11 +4,11 @@ services:
     container_name: mimo-api-key-router
     restart: unless-stopped
     ports:
-      - "4000:4000"
+      - "${PORT:-4000}:${PORT:-4000}"
     environment:
       - NODE_ENV=production
       - HOST=0.0.0.0
-      - PORT=4000
+      - PORT=${PORT:-4000}
       - DATABASE_URL=file:/data/mimo-router.sqlite
       - INITIAL_ADMIN_PASSWORD=${INITIAL_ADMIN_PASSWORD}
       - GATEWAY_KEY=${GATEWAY_KEY}
