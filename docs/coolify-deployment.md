@@ -48,18 +48,9 @@ Mount a persistent volume to `/data` inside the container. This keeps the SQLite
 
 Click **Deploy**. Coolify will build the Docker image and start the container.
 
-## 7. Get the Gateway Key
+## 7. Create API Keys
 
-After the first successful deploy, open the container logs in Coolify. You will see:
-
-```text
-========================================
-Gateway API Key (save this securely):
-mimo_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
-========================================
-```
-
-Copy this key immediately.
+Open the domain in your browser and log in using `INITIAL_ADMIN_PASSWORD`. Then, go to **Gateway Credentials** to create and manage your API keys, or pre-configure a static key via the `GATEWAY_KEY` environment variable.
 
 ## 8. Verify
 

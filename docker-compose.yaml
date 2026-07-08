@@ -1,6 +1,6 @@
 services:
   mimo-router:
-    build: .
+    image: ghcr.io/mamakdevtest/mimo-api-key-router:latest
     container_name: mimo-api-key-router
     restart: unless-stopped
     ports:

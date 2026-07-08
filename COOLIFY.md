@@ -77,16 +77,8 @@ openssl rand -hex 32
 
 1. Click **Deploy**
 2. Wait for build (~3-5 minutes)
-3. On first boot, check **Logs** tab for the gateway key:
-
-```text
-========================================
-Gateway API Key (save this securely):
-mimo_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
-========================================
-```
-
-4. **Copy it immediately.** Never shown again.
+3. Once the app starts, open the domain in your browser and log in using `INITIAL_ADMIN_PASSWORD`.
+4. Go to **Gateway Credentials** (temp keys) to create your API keys, or pre-configure them via the `GATEWAY_KEY` environment variable.
 
 ---
 
@@ -99,15 +91,15 @@ Deploying via Docker Compose is the most flexible method. If you deploy using `b
 > Compiling frontend bundles (Vite + TypeScript type-checking) requires significant CPU and memory. On entry-level VPS servers, this process can take several minutes or fail due to memory limits.
 >
 > **The Solution (Fast Deploys):**
-> Build the Docker image once (locally or using GitHub Actions) and push it to a Docker registry (e.g., Docker Hub, GitHub Container Registry). Then, reference the pre-built image in your `docker-compose.yml` instead of building it from source. This reduces deploy time from minutes to **seconds**.
+> Build the Docker image once (locally or using GitHub Actions) and push it to a Docker registry (e.g., Docker Hub, GitHub Container Registry). Then, reference the pre-built image in your `docker-compose.yaml` instead of building it from source. This reduces deploy time from minutes to **seconds**.
 
-### 3a. Pre-built Image docker-compose.yml
-If you have pushed your image (e.g., `username/mimo-api-key-router:latest`), use this compose file:
+### 3a. Pre-built Image docker-compose.yaml
+If you have pushed your image (e.g., `ghcr.io/mamakdevtest/mimo-api-key-router:latest`), use this compose file:
 
 ```yaml
 services:
   mimo-router:
-    image: username/mimo-api-key-router:latest
+    image: ghcr.io/mamakdevtest/mimo-api-key-router:latest
     container_name: mimo-api-key-router
     restart: unless-stopped
     ports:
@@ -151,7 +143,7 @@ Follow these steps exactly in the Coolify UI to deploy this Docker Compose stack
 
 2. **Paste Compose Configuration:**
    - Under **Source**, choose **Raw Docker Compose** (or connect your git repo if building from source).
-   - Paste the contents of your `docker-compose.yml` into the editor.
+   - Paste the contents of your `docker-compose.yaml` into the editor.
    - Click **Save**.
 
 3. **Configure Domains & Reverse Proxy:**
@@ -228,12 +220,6 @@ curl https://api.ai.emirhanmamak.com/v1/models \
 
 - Make sure you're using the latest Dockerfile from the repository
 - The builder stage installs devDependencies with `--include=dev`
-
-### Gateway key not showing in logs
-
-- Check Coolify resource logs (not deployment logs)
-- Only printed on FIRST boot
-- If redeployed without persistent storage, DB was reset
 
 ### Health check failing
 
