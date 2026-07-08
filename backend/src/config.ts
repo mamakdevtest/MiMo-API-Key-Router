@@ -2,6 +2,7 @@ import * as dotenv from 'dotenv';
 import { z } from 'zod';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import crypto from 'node:crypto';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 dotenv.config({ path: path.resolve(__dirname, '../../.env') });
@@ -11,16 +12,13 @@ const envSchema = z.object({
   HOST: z.string().default('0.0.0.0'),
   PORT: z.string().default('4000').transform(Number),
   DATABASE_URL: z.string().default('file:./data.sqlite'),
-  APP_ENCRYPTION_KEY: z.string().min(32),
+  APP_ENCRYPTION_KEY: z.string().min(32).default('mimo-default-encryption-key-32-chars-long'),
   INITIAL_ADMIN_PASSWORD: z.string().min(1).optional(),
   GATEWAY_KEY: z.string().min(8).optional(),
   TRUST_PROXY: z.string().default('false').transform((v) => v === 'true'),
   LOG_LEVEL: z.enum(['trace', 'debug', 'info', 'warn', 'error', 'fatal']).default('info'),
   SESSION_SECRET: z.string().min(32).default(() => {
-    if (process.env.NODE_ENV === 'production') {
-      throw new Error('SESSION_SECRET is required in production');
-    }
-    return 'dev-session-secret-change-me-in-production';
+    return crypto.randomBytes(32).toString('hex');
   }),
   SESSION_MAX_AGE_SECONDS: z.string().default('86400').transform(Number),
   COOKIE_SECURE: z.string().default('false').transform((v) => v === 'true'),

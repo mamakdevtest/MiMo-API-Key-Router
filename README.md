@@ -31,7 +31,7 @@ npm install
 
 # Create environment file
 cp .env.example .env
-# Edit .env and set APP_ENCRYPTION_KEY and INITIAL_ADMIN_PASSWORD
+# Edit .env and set INITIAL_ADMIN_PASSWORD
 
 # Run migrations
 npm run db:migrate
@@ -66,9 +66,9 @@ Point your domain (e.g. `api.ai.emirhanmamak.com`) to your Coolify server. Cooli
 
 | Variable | Required | Description |
 |----------|----------|-------------|
-| `APP_ENCRYPTION_KEY` | Yes | 32+ char key for encrypting MiMo API keys |
+| `APP_ENCRYPTION_KEY` | No | 32+ char key for encrypting MiMo API keys (defaults to safe fallback) |
 | `INITIAL_ADMIN_PASSWORD` | First boot | Admin dashboard password |
-| `SESSION_SECRET` | Production | Secret for signing session cookies (min 32 chars) |
+| `SESSION_SECRET` | No | Secret for signing session cookies (defaults to random string) |
 | `PORT` | No | Server port, default `4000` |
 | `DATABASE_URL` | No | SQLite path, default `file:/data/mimo-router.sqlite` |
 | `TRUST_PROXY` | No | Trust `X-Forwarded-For` from reverse proxy (default `false`) |

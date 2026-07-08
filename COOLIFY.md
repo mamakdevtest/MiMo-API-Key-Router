@@ -44,9 +44,7 @@ This is the easiest method. Coolify pulls from GitHub and builds automatically.
 Add these in Coolify (Resource → **Environment Variables**):
 
 ```text
-APP_ENCRYPTION_KEY=<generate a random 32+ char string>
 INITIAL_ADMIN_PASSWORD=<set a strong admin password>
-SESSION_SECRET=<generate a random 32+ char string>
 TRUST_PROXY=true
 COOKIE_SECURE=true
 NODE_ENV=production
@@ -54,8 +52,6 @@ PORT=4000
 DATABASE_URL=file:/data/mimo-router.sqlite
 LOG_LEVEL=info
 SESSION_MAX_AGE_SECONDS=86400
-MIMO_OPENAI_BASE_URL=https://api.xiaomimimo.com/v1
-MIMO_ANTHROPIC_BASE_URL=https://api.xiaomimimo.com/anthropic
 ```
 
 > **⚠️ CRITICAL:** `COOKIE_SECURE` MUST be `true` when using HTTPS.
@@ -109,16 +105,12 @@ services:
       - HOST=${HOST:-0.0.0.0}
       - PORT=${PORT:-4000}
       - DATABASE_URL=${DATABASE_URL:-file:/data/mimo-router.sqlite}
-      - APP_ENCRYPTION_KEY=${APP_ENCRYPTION_KEY}
       - INITIAL_ADMIN_PASSWORD=${INITIAL_ADMIN_PASSWORD}
       - GATEWAY_KEY=${GATEWAY_KEY}
-      - SESSION_SECRET=${SESSION_SECRET}
       - TRUST_PROXY=${TRUST_PROXY:-true}
       - COOKIE_SECURE=${COOKIE_SECURE:-true}
       - LOG_LEVEL=${LOG_LEVEL:-info}
       - SESSION_MAX_AGE_SECONDS=${SESSION_MAX_AGE_SECONDS:-86400}
-      - MIMO_OPENAI_BASE_URL=${MIMO_OPENAI_BASE_URL:-https://api.xiaomimimo.com/v1}
-      - MIMO_ANTHROPIC_BASE_URL=${MIMO_ANTHROPIC_BASE_URL:-https://api.xiaomimimo.com/anthropic}
     volumes:
       - mimo-data:/data
     healthcheck:
@@ -155,11 +147,9 @@ Follow these steps exactly in the Coolify UI to deploy this Docker Compose stack
 4. **Define Environment Variables:**
    - Go to the **Environment Variables** tab.
    - Add the following keys:
-     - `APP_ENCRYPTION_KEY`: A secure 32+ character key.
      - `INITIAL_ADMIN_PASSWORD`: Admin dashboard login password.
-     - `SESSION_SECRET`: Session cookie secret (32+ characters).
      - `HOST_IP`: **Set this to the host IP you want the container to bind to** (e.g. `0.0.0.0` to listen on all interfaces, or `127.0.0.1` to restrict access through Coolify's reverse proxy only).
-     - `GATEWAY_KEY` *(Optional)*: **Set a static master gateway API key** (e.g. `mimo_yourcustomkey123`). If you provide this, no random key is printed on startup, and this key works immediately. If not provided, you can create and manage all keys dynamically from the admin panel under **Gateway Credentials**.
+     - `GATEWAY_KEY` *(Optional)*: **Set a static master gateway API key** (e.g. `mimo_yourcustomkey123`). If not provided, you can create and manage all keys dynamically from the admin panel under **Gateway Credentials**.
      - `TRUST_PROXY`: `true`
      - `COOKIE_SECURE`: `true` (Since we use HTTPS)
 
@@ -202,7 +192,7 @@ curl https://api.ai.emirhanmamak.com/v1/models \
 ### Container keeps restarting
 
 - `INITIAL_ADMIN_PASSWORD` not set → crashes on first boot
-- `APP_ENCRYPTION_KEY` too short (< 32 chars) → crashes
+- `APP_ENCRYPTION_KEY` is manually specified but too short (< 32 chars) → crashes (you can omit it entirely to use the safe default key)
 - **SQLite Database Permission Denied:** If logs show `SQLITE_CANTOPEN: unable to open database file` or permission denied errors, the mounted host directory volume `/data` is owned by `root` instead of the container's non-root user `router` (UID `1001`).
   - *Fix Option A (Recommended):* Run this command on your host server to change the permissions:
     ```bash

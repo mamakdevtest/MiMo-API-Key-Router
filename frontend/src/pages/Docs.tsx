@@ -2,7 +2,6 @@ import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import { Copy, Check, ExternalLink } from 'lucide-react';
 
 function CopyBox({ text, label }: { text: string; label: string }) {
@@ -29,7 +28,7 @@ function CopyBox({ text, label }: { text: string; label: string }) {
 }
 
 export function Docs() {
-  const [gatewayKey, setGatewayKey] = useState('<YOUR_GATEWAY_API_KEY>');
+  const gatewayKey = '<YOUR_GATEWAY_API_KEY>';
 
   // Dynamically detect the server's base URL from the current browser location.
   // This works whether accessed via domain (api.example.com),
@@ -58,17 +57,6 @@ export function Docs() {
           <CopyBox label="Base URL" text={baseUrl} />
           <CopyBox label="OpenAI Endpoint" text={`${baseUrl}/v1`} />
           <CopyBox label="Anthropic Endpoint" text={baseUrl} />
-          <div className="space-y-2">
-            <label className="text-sm font-medium text-muted-foreground">Gateway API Key</label>
-            <Input
-              value={gatewayKey}
-              onChange={(e) => setGatewayKey(e.target.value)}
-              placeholder="Paste your gateway key here"
-            />
-            <p className="text-xs text-muted-foreground">
-              Find this in your server logs on first startup, or rotate it from Settings.
-            </p>
-          </div>
         </CardContent>
       </Card>
 

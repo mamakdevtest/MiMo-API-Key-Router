@@ -28,16 +28,12 @@ Enable HTTPS so Coolify can issue a Let's Encrypt certificate.
 Add the following variables in Coolify:
 
 ```text
-APP_ENCRYPTION_KEY=your-random-32-char-key
 INITIAL_ADMIN_PASSWORD=your-strong-admin-password
-SESSION_SECRET=your-random-32-char-key
 NODE_ENV=production
 PORT=4000
 DATABASE_URL=file:/data/mimo-router.sqlite
 TRUST_PROXY=true
 COOKIE_SECURE=true
-MIMO_OPENAI_BASE_URL=https://api.xiaomimimo.com/v1
-MIMO_ANTHROPIC_BASE_URL=https://api.xiaomimimo.com/anthropic
 ```
 
 ## 5. Configure Persistent Storage

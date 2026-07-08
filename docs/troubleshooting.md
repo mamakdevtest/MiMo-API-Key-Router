@@ -9,9 +9,8 @@ This guide helps you resolve common issues.
 **Fix:**
 
 1. Make sure `.env` exists in the project root.
-2. Set `APP_ENCRYPTION_KEY` to at least 32 characters.
-3. Set `INITIAL_ADMIN_PASSWORD` on first boot.
-4. Restart the server.
+2. Set `INITIAL_ADMIN_PASSWORD` on first boot.
+3. Restart the server.
 
 ## Backend fails to start with "SQLITE_CANTOPEN: unable to open database file"
 

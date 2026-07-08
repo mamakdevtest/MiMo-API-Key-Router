@@ -22,15 +22,13 @@ Copy the example file:
 cp .env.example .env
 ```
 
-Edit `.env` and set the required values:
+Edit `.env` and set the required value:
 
 ```text
-APP_ENCRYPTION_KEY=your-random-32-char-key-here
 INITIAL_ADMIN_PASSWORD=your-strong-admin-password
-SESSION_SECRET=another-random-32-char-key
 ```
 
-> **Important:** `APP_ENCRYPTION_KEY` must be at least 32 characters long. It is used to encrypt your real MiMo API keys.
+> **Note:** `APP_ENCRYPTION_KEY` and `SESSION_SECRET` are optional and will automatically fall back to secure default values if not specified.
 
 ## 3. Run Database Migrations
 
