@@ -4,6 +4,7 @@ import { config } from '../config.js';
 import { KeyRouter } from '../services/key-router.js';
 import { logRequest } from '../services/request-logger.js';
 import { getClientIp } from '../auth/index.js';
+import { streamManager } from '../services/stream-manager.js';
 import { ALL_MODELS } from '@mimo/shared';
 
 const ANTHROPIC_ALLOWLIST = new Set([
@@ -25,8 +26,33 @@ const MODEL_PRICING: Record<string, { input: number; output: number }> = {
   'mimo-v2.5-tts-voicedesign': { input: 0, output: 0 }, // free for limited time
 };
 
+function findPricingForModel(model: string): { input: number; output: number } | undefined {
+  const normalized = model.toLowerCase();
+  
+  if (MODEL_PRICING[normalized]) return MODEL_PRICING[normalized];
+  
+  const lastSlashIndex = normalized.lastIndexOf('/');
+  if (lastSlashIndex !== -1) {
+    const stripped = normalized.slice(lastSlashIndex + 1);
+    if (MODEL_PRICING[stripped]) return MODEL_PRICING[stripped];
+  }
+  
+  const keys = Object.keys(MODEL_PRICING).sort((a, b) => b.length - a.length);
+  for (const key of keys) {
+    if (normalized.includes(key)) {
+      return MODEL_PRICING[key];
+    }
+  }
+  
+  if (normalized.includes('mimo')) {
+    return MODEL_PRICING['mimo-v2.5'];
+  }
+  
+  return undefined;
+}
+
 function calculateCost(model: string, promptTokens: number, completionTokens: number): number {
-  const pricing = MODEL_PRICING[model];
+  const pricing = findPricingForModel(model);
   if (!pricing) return 0;
   const inputCost = (promptTokens / 1_000_000) * pricing.input;
   const outputCost = (completionTokens / 1_000_000) * pricing.output;
@@ -79,7 +105,7 @@ function buildUpstreamHeaders(request: FastifyRequest, upstreamKey: string): Rec
   for (const [key, value] of Object.entries(request.headers)) {
     if (value === undefined) continue;
     const lower = key.toLowerCase();
-    if (lower === 'host' || lower === 'connection' || lower === 'authorization') continue;
+    if (lower === 'host' || lower === 'connection' || lower === 'authorization' || lower === 'content-length') continue;
     if (Array.isArray(value)) {
       headers[key] = value.join(', ');
     } else {
@@ -124,6 +150,7 @@ async function proxyRequest(
   let model: string | null = null;
   let fallback = false;
   let selectedKeyId: string | null = null;
+  let selectedKeyLabel: string | null = null;
 
   try {
     const body = request.body as Record<string, unknown> | undefined;
@@ -157,7 +184,16 @@ async function proxyRequest(
     }
 
     selectedKeyId = selected.id;
+    selectedKeyLabel = selected.label;
     fallback = selected.fallback;
+
+    streamManager.broadcast({
+      type: 'request_started',
+      keyId: selected.id,
+      label: selected.label,
+      model: model || 'unknown',
+      timestamp: Date.now()
+    });
 
     const url = `${baseUrl}${path}`;
     const headers = headerBuilder(request, selected.key);
@@ -287,6 +323,17 @@ async function proxyRequest(
           estimatedCost: cost,
         });
 
+        streamManager.broadcast({
+          type: 'request_completed',
+          keyId: selected.id,
+          label: selected.label,
+          model: model || 'unknown',
+          tokens: tokens.totalTokens,
+          cost,
+          success: true,
+          timestamp: Date.now()
+        });
+
         return reply;
       }
 
@@ -353,6 +400,17 @@ async function proxyRequest(
         estimatedCost: cost,
       });
 
+      streamManager.broadcast({
+        type: 'request_completed',
+        keyId: selected.id,
+        label: selected.label,
+        model: model || 'unknown',
+        tokens: tokens.totalTokens,
+        cost,
+        success: true,
+        timestamp: Date.now()
+      });
+
       return reply.raw.end();
     } catch (err) {
       const error = err as Error;
@@ -374,6 +432,14 @@ async function proxyRequest(
         cooldownUntil: new Date(Date.now() + duration * 1000),
         lastErrorCode: 0,
         lastErrorMessage: error.message,
+      });
+      streamManager.broadcast({
+        type: 'request_completed',
+        keyId: selected.id,
+        label: selected.label,
+        model: model || 'unknown',
+        success: false,
+        timestamp: Date.now()
       });
       previousKeyId = selected.id;
       continue;
@@ -412,13 +478,13 @@ export async function registerProxyRoutes(app: FastifyInstance, db: Db) {
     return reply.send({ object: 'list', data: models });
   });
 
-  app.post('/v1/chat/completions', async (request, reply) => {
+  app.post('/v1/chat/completions', { config: { rateLimit: false } }, async (request, reply) => {
     const body = request.body as { stream?: boolean } | undefined;
     const isStreaming = body?.stream === true;
     return proxyRequest(app, request, reply, db, config.mimoOpenAIBaseUrl, '/chat/completions', buildUpstreamHeaders, isStreaming);
   });
 
-  app.post('/v1/messages', async (request, reply) => {
+  app.post('/v1/messages', { config: { rateLimit: false } }, async (request, reply) => {
     const body = request.body as { stream?: boolean } | undefined;
     const isStreaming = body?.stream === true;
     return proxyRequest(app, request, reply, db, config.mimoAnthropicBaseUrl, '/v1/messages', buildAnthropicHeaders, isStreaming);

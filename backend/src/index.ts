@@ -69,7 +69,7 @@ try {
   });
 
   await app.register(rateLimit, {
-    max: 100,
+    max: 200,
     timeWindow: '1 minute',
     keyGenerator: (req) => req.ip || 'unknown',
   });

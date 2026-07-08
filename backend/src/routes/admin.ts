@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { config } from '../config.js';
 import { encrypt, maskKey, hashGatewayKey, generateSecureToken } from '../crypto/index.js';
 import { apiKeys, settings, requestLogs, gatewayCredentials } from '../db/schema.js';
+import { streamManager } from '../services/stream-manager.js';
 import type { Db } from '../db/index.js';
 import { ALL_MODELS } from '@mimo/shared';
 
@@ -369,6 +370,23 @@ export async function registerAdminRoutes(app: FastifyInstance, db: Db) {
       .where(gte(requestLogs.timestamp, since))
       .groupBy(sql`strftime('%Y-%m-%d %d %H:00', ${requestLogs.timestamp})`);
 
+    // Usage by API Key
+    const byKey = await db
+      .select({
+        keyId: requestLogs.apiKeyId,
+        label: apiKeys.label,
+        requests: count(requestLogs.id),
+        totalTokens: sql<number>`coalesce(sum(${requestLogs.totalTokens}), 0)`,
+        promptTokens: sql<number>`coalesce(sum(${requestLogs.promptTokens}), 0)`,
+        completionTokens: sql<number>`coalesce(sum(${requestLogs.completionTokens}), 0)`,
+        estimatedCost: sql<number>`coalesce(sum(${requestLogs.estimatedCost}), 0)`,
+        avgLatency: sql<number>`coalesce(avg(${requestLogs.latencyMs}), 0)`,
+      })
+      .from(requestLogs)
+      .leftJoin(apiKeys, eq(requestLogs.apiKeyId, apiKeys.id))
+      .where(gte(requestLogs.timestamp, since))
+      .groupBy(requestLogs.apiKeyId, apiKeys.label);
+
     // Totals
     const [totals] = await db
       .select({
@@ -403,7 +421,35 @@ export async function registerAdminRoutes(app: FastifyInstance, db: Db) {
         totalTokens: h.totalTokens,
         estimatedCost: Math.round(h.estimatedCost * 10000) / 10000,
       })),
+      byKey: byKey.map((k) => ({
+        keyId: k.keyId || 'unknown',
+        label: k.label || 'Unknown Key',
+        requests: k.requests,
+        totalTokens: k.totalTokens,
+        promptTokens: k.promptTokens,
+        completionTokens: k.completionTokens,
+        estimatedCost: Math.round(k.estimatedCost * 10000) / 10000,
+        avgLatency: Math.round(k.avgLatency),
+      })),
     });
+  });
+
+  // ── Stream / SSE ──────────────────────────────────────────
+
+  app.get('/admin/stream', { config: { rateLimit: false } }, (request, reply) => {
+    reply.hijack();
+    const rawRes = reply.raw;
+    rawRes.writeHead(200, {
+      'Content-Type': 'text/event-stream',
+      'Cache-Control': 'no-cache',
+      'Connection': 'keep-alive',
+      'X-Accel-Buffering': 'no',
+    });
+
+    streamManager.addClient(reply);
+
+    // Initial connection message
+    rawRes.write(`data: ${JSON.stringify({ type: 'connected', timestamp: Date.now() })}\n\n`);
   });
 
   // ── Temporary Gateway Credentials ──────────────────────────

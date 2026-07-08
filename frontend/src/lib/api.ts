@@ -131,6 +131,16 @@ export const api = {
       estimatedCost: number;
       avgLatency: number;
     }>;
+    byKey: Array<{
+      keyId: string;
+      label: string;
+      requests: number;
+      totalTokens: number;
+      promptTokens: number;
+      completionTokens: number;
+      estimatedCost: number;
+      avgLatency: number;
+    }>;
     hourly: Array<{
       hour: string;
       requests: number;

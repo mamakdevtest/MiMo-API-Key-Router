@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { Activity, KeyRound, AlertTriangle, BatteryWarning, Clock, CheckCircle2, Coins, Zap, BarChart3 } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { api } from '@/lib/api';
+import { LiveFlowDiagram } from '@/components/LiveFlowDiagram';
 import {
   BarChart,
   Bar,
@@ -60,6 +61,17 @@ export function Dashboard() {
     avgLatency: m.avgLatency,
   }));
 
+  const keyData = (usage?.byKey || []).map((k) => ({
+    keyId: k.keyId,
+    label: k.label,
+    requests: k.requests,
+    tokens: k.totalTokens,
+    cost: k.estimatedCost,
+    promptTokens: k.promptTokens,
+    completionTokens: k.completionTokens,
+    avgLatency: k.avgLatency,
+  }));
+
   const hourlyData = (usage?.hourly || []).map((h) => ({
     hour: h.hour ? (h.hour.split(' ')[1] || h.hour) : '--',
     requests: h.requests,
@@ -88,6 +100,9 @@ export function Dashboard() {
           ))}
         </div>
       </div>
+
+      {/* Live Diagram */}
+      <LiveFlowDiagram />
 
       {/* Stat Cards */}
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
@@ -240,6 +255,51 @@ export function Dashboard() {
                       <td className="py-2 px-2 text-right font-medium">{formatTokens(m.tokens)}</td>
                       <td className="py-2 px-2 text-right text-green-500 font-medium">{formatCost(m.cost)}</td>
                       <td className="py-2 px-2 text-right text-muted-foreground">{m.avgLatency}ms</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Key Details Table */}
+      {keyData.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle>API Key Usage Details</CardTitle>
+            <CardDescription>Per-key breakdown with costs and latency</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b">
+                    <th className="text-left py-2 px-2">Key Label</th>
+                    <th className="text-right py-2 px-2">Requests</th>
+                    <th className="text-right py-2 px-2">Prompt Tokens</th>
+                    <th className="text-right py-2 px-2">Completion Tokens</th>
+                    <th className="text-right py-2 px-2">Total Tokens</th>
+                    <th className="text-right py-2 px-2">Est. Cost</th>
+                    <th className="text-right py-2 px-2">Avg Latency</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {keyData.map((k, i) => (
+                    <tr key={k.keyId} className="border-b last:border-0 hover:bg-muted/30 transition-colors">
+                      <td className="py-2 px-2">
+                        <div className="flex items-center gap-2">
+                          <KeyRound className="w-4 h-4 text-muted-foreground" />
+                          <span className="font-medium">{k.label}</span>
+                        </div>
+                      </td>
+                      <td className="py-2 px-2 text-right">{k.requests.toLocaleString()}</td>
+                      <td className="py-2 px-2 text-right text-muted-foreground">{formatTokens(k.promptTokens)}</td>
+                      <td className="py-2 px-2 text-right text-muted-foreground">{formatTokens(k.completionTokens)}</td>
+                      <td className="py-2 px-2 text-right font-medium">{formatTokens(k.tokens)}</td>
+                      <td className="py-2 px-2 text-right text-green-500 font-medium">{formatCost(k.cost)}</td>
+                      <td className="py-2 px-2 text-right text-muted-foreground">{k.avgLatency}ms</td>
                     </tr>
                   ))}
                 </tbody>

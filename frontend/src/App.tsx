@@ -1,4 +1,6 @@
+import { useEffect } from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
+import { useQueryClient } from '@tanstack/react-query';
 import { useAuth } from './hooks/useAuth';
 import { Login } from './pages/Login';
 import { Layout } from './components/Layout';
@@ -13,6 +15,27 @@ import { Button } from './components/ui/button';
 
 function App() {
   const { isAuthenticated, isLoading, error, refetch } = useAuth();
+  const queryClient = useQueryClient();
+
+  useEffect(() => {
+    if (!isAuthenticated) return;
+
+    const sse = new EventSource('/admin/stream');
+
+    sse.onmessage = (e) => {
+      try {
+        const data = JSON.parse(e.data);
+        if (data.type === 'request_completed') {
+          queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+          queryClient.invalidateQueries({ queryKey: ['usage'] });
+          queryClient.invalidateQueries({ queryKey: ['logs'] });
+          queryClient.invalidateQueries({ queryKey: ['keys'] });
+        }
+      } catch (err) {}
+    };
+
+    return () => sse.close();
+  }, [isAuthenticated, queryClient]);
 
   if (isLoading) {
     return (

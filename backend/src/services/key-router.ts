@@ -7,6 +7,7 @@ import type { ApiKeyStatus } from '@mimo/shared';
 
 export interface SelectedKey {
   id: string;
+  label: string;
   key: string;
   fallback: boolean;
 }
@@ -34,7 +35,7 @@ export class KeyRouter {
       if (key.status === 'cooldown' && key.cooldownUntil && new Date(key.cooldownUntil) > now) continue;
 
       const decrypted = decrypt(key.encryptedKey, config.encryptionKey);
-      return { id: key.id, key: decrypted, fallback: Boolean(previousKeyId) };
+      return { id: key.id, label: key.label, key: decrypted, fallback: Boolean(previousKeyId) };
     }
 
     return null;
