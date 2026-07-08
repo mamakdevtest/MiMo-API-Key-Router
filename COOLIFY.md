@@ -197,6 +197,12 @@ curl https://api.ai.emirhanmamak.com/v1/models \
 
 - `INITIAL_ADMIN_PASSWORD` not set → crashes on first boot
 - `APP_ENCRYPTION_KEY` too short (< 32 chars) → crashes
+- **SQLite Database Permission Denied:** If logs show `SQLITE_CANTOPEN: unable to open database file` or permission denied errors, the mounted host directory volume `/data` is owned by `root` instead of the container's non-root user `router` (UID `1001`).
+  - *Fix Option A (Recommended):* Run this command on your host server to change the permissions:
+    ```bash
+    sudo chown -R 1001:1001 /data/coolify/applications/<app-uuid>/storage/data
+    ```
+  - *Fix Option B:* Edit the `Dockerfile` and comment out the `USER router` line to run the container as `root`.
 
 ### Admin login doesn't work
 

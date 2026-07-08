@@ -13,6 +13,19 @@ This guide helps you resolve common issues.
 3. Set `INITIAL_ADMIN_PASSWORD` on first boot.
 4. Restart the server.
 
+## Backend fails to start with "SQLITE_CANTOPEN: unable to open database file"
+
+**Cause:** The application runs as a non-root user `router` (UID `1001`) inside Docker, but the mounted persistent volume folder is owned by `root`.
+
+**Fix:**
+
+1. Run this command on your host server to change the permissions:
+   ```bash
+   sudo chown -R 1001:1001 /data/coolify/applications/<app-uuid>/storage/data
+   ```
+2. Alternatively, edit the `Dockerfile` and comment out the `USER router` line to run the container as `root`.
+3. Restart the container.
+
 ## "Unable to reach server" or HTML response error
 
 **Cause:** The frontend cannot reach the backend.

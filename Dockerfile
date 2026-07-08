@@ -38,6 +38,9 @@ RUN npm run build --workspace=shared && \
     npm run build --workspace=frontend && \
     npm run build --workspace=backend
 
+# Prune devDependencies to reduce final image size
+RUN npm prune --omit=dev
+
 # ============================================================
 # Stage 3: Production runner (minimal image)
 # ============================================================
@@ -58,6 +61,7 @@ COPY --from=builder --chown=router:nodejs /app/backend/dist ./backend/dist
 COPY --from=builder --chown=router:nodejs /app/backend/drizzle ./backend/drizzle
 COPY --from=builder --chown=router:nodejs /app/backend/package.json ./backend/package.json
 COPY --from=builder --chown=router:nodejs /app/frontend/dist ./frontend/dist
+COPY --from=builder --chown=router:nodejs /app/shared/package.json ./shared/package.json
 COPY --from=builder --chown=router:nodejs /app/shared/dist ./shared/dist
 COPY --from=builder --chown=router:nodejs /app/node_modules ./node_modules
 COPY --from=builder --chown=router:nodejs /app/package.json ./package.json
