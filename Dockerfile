@@ -1,19 +1,21 @@
 # syntax=docker/dockerfile:1
 
 # ============================================================
-# Stage 1: Install ALL dependencies (cached unless package files change)
+# Stage 1: Install ALL dependencies (including dev for building)
 # ============================================================
 FROM node:20-alpine AS deps
 RUN apk add --no-cache libc6-compat python3 make g++
 WORKDIR /app
 
-# Copy only package files first — this layer is cached
-# and only invalidated when package.json/lock changes
+# Copy package files
 COPY package.json package-lock.json* ./
 COPY backend/package.json ./backend/
 COPY frontend/package.json ./frontend/
 COPY shared/package.json ./shared/
-RUN npm ci
+
+# Install ALL deps including devDependencies (tsc, vite, etc.)
+# npm ci skips devDeps when NODE_ENV=production, so force include
+RUN npm ci --include=dev
 
 # ============================================================
 # Stage 2: Build shared → frontend → backend
@@ -22,19 +24,19 @@ FROM node:20-alpine AS builder
 RUN apk add --no-cache libc6-compat python3 make g++
 WORKDIR /app
 
-# Copy installed node_modules from deps stage
+# Copy everything from deps stage (includes devDependencies with tsc)
 COPY --from=deps /app/node_modules ./node_modules
 
-# Copy source files (except what's in .dockerignore)
+# Copy source files
 COPY shared/ ./shared/
 COPY frontend/ ./frontend/
 COPY backend/ ./backend/
 COPY package.json tsconfig.json ./
 
 # Build in correct order: shared → frontend → backend
-RUN npm run build --workspace=shared
-RUN npm run build --workspace=frontend
-RUN npm run build --workspace=backend
+RUN npm run build --workspace=shared && \
+    npm run build --workspace=frontend && \
+    npm run build --workspace=backend
 
 # ============================================================
 # Stage 3: Production runner (minimal image)

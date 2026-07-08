@@ -18,29 +18,30 @@ nslookup api.ai.emirhanmamak.com
 # If not, update your DNS A record first and wait for propagation (5-30 min)
 ```
 
-## 2. Create Resource in Coolify
+## 2. Deploy — Method A: Git Repository (Recommended)
 
-1. Go to **Resources** → **New Resource**
-2. Select **Git Repository** (not Docker Compose)
+This is the easiest method. Coolify pulls from GitHub and builds automatically.
+
+### 2a. Create Resource
+
+1. In Coolify, go to **Resources** → **New Resource**
+2. Select **Git Repository**
 3. Connect your GitHub repository: `mamakdevtest/MiMo-API-Key-Router`
 4. Select branch: `main`
 5. Build pack: **Dockerfile**
 6. Dockerfile location: `./Dockerfile`
 
-## 3. Domain & SSL Configuration
+### 2b. Domain & SSL
 
 1. In the resource settings, go to **Domains**
 2. Set the domain: `api.ai.emirhanmamak.com`
 3. **Port**: `4000`
 4. Enable **HTTPS** (Let's Encrypt)
-5. Save and wait for the SSL certificate to be issued (1-5 minutes)
+5. Save
 
-> **Important:** Coolify must successfully obtain the SSL certificate before the site will work over HTTPS.
-> If you see `ERR_SSL_PROTOCOL_ERROR`, the certificate may not be ready yet. Check the SSL status in Coolify dashboard.
+### 2c. Environment Variables
 
-## 4. Environment Variables
-
-Add these environment variables in Coolify (Resource → **Environment Variables**):
+Add these in Coolify (Resource → **Environment Variables**):
 
 ```text
 APP_ENCRYPTION_KEY=<generate a random 32+ char string>
@@ -58,28 +59,25 @@ MIMO_ANTHROPIC_BASE_URL=https://api.xiaomimimo.com/anthropic
 ```
 
 > **⚠️ CRITICAL:** `COOKIE_SECURE` MUST be `true` when using HTTPS.
-> If set to `false`, admin login will not work because cookies won't be set over HTTPS.
 
-To generate secure keys, run:
+To generate secure keys:
 
 ```bash
-# On your server:
 openssl rand -hex 32
 ```
 
-## 5. Persistent Storage
+### 2d. Persistent Storage
 
-1. In Coolify, go to **Storage** or **Volumes**
-2. Add a persistent volume mapping:
+1. Go to **Storage** or **Volumes**
+2. Add a persistent volume:
    - Host path or named volume: `mimo-data`
    - Container path: `/data`
-3. This keeps the SQLite database alive across container restarts and redeploys
 
-## 6. Deploy
+### 2e. Deploy
 
-1. Click **Deploy** in Coolify
-2. Wait for the build to complete (~3-5 minutes)
-3. Check the **Logs** tab — on first boot you will see:
+1. Click **Deploy**
+2. Wait for build (~3-5 minutes)
+3. On first boot, check **Logs** tab for the gateway key:
 
 ```text
 ========================================
@@ -88,76 +86,144 @@ mimo_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
 ========================================
 ```
 
-4. **Copy this key immediately.** It is never shown again.
+4. **Copy it immediately.** Never shown again.
 
-## 7. Verify Deployment
+---
+
+## 3. Deploy — Method B: Docker Compose
+
+If you prefer Docker Compose, create a `.env` file on the server and use docker-compose.
+
+### 3a. Create `.env` file on the server
+
+```bash
+mkdir -p /data/mimo-router
+cd /data/mimo-router
+
+cat > .env << 'EOF'
+NODE_ENV=production
+PORT=4000
+DATABASE_URL=file:/data/mimo-router.sqlite
+APP_ENCRYPTION_KEY=your-random-32-char-string-here
+INITIAL_ADMIN_PASSWORD=your-strong-admin-password
+SESSION_SECRET=your-random-32-char-string-here
+TRUST_PROXY=true
+COOKIE_SECURE=true
+LOG_LEVEL=info
+SESSION_MAX_AGE_SECONDS=86400
+MIMO_OPENAI_BASE_URL=https://api.xiaomimimo.com/v1
+MIMO_ANTHROPIC_BASE_URL=https://api.xiaomimimo.com/anthropic
+EOF
+```
+
+### 3b. Create `docker-compose.yml`
+
+```yaml
+services:
+  mimo-router:
+    build: .
+    container_name: mimo-api-key-router
+    restart: unless-stopped
+    ports:
+      - "4000:4000"
+    env_file:
+      - .env
+    volumes:
+      - mimo-data:/data
+    healthcheck:
+      test: ["CMD", "./healthcheck.sh"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+volumes:
+  mimo-data:
+```
+
+### 3c. Build and run
+
+```bash
+cd /data/mimo-router
+docker compose up --build -d
+
+# Check logs for gateway key
+docker compose logs -f mimo-router
+```
+
+### 3d. Coolify with Docker Compose
+
+If you want Coolify to manage a Docker Compose deployment:
+
+1. Go to **Resources** → **New Resource**
+2. Select **Docker Compose** (not Git Repository)
+3. Upload your `docker-compose.yml`
+4. Set the same environment variables in Coolify
+5. Set domain and SSL as described in Method A
+
+---
+
+## 4. Verify Deployment
 
 ### Check health endpoint:
+
 ```bash
 curl https://api.ai.emirhanmamak.com/health
 # Should return: {"status":"ok"}
 ```
 
 ### Check admin login:
+
 - Open `https://api.ai.emirhanmamak.com` in browser
 - You should see the login page
-- Log in with the `INITIAL_ADMIN_PASSWORD` you set
+- Log in with `INITIAL_ADMIN_PASSWORD`
 
 ### Check models endpoint:
+
 ```bash
 curl https://api.ai.emirhanmamak.com/v1/models \
   -H "Authorization: Bearer <YOUR_GATEWAY_KEY>"
 ```
 
-## Troubleshooting
+## 5. Troubleshooting
 
 ### ERR_SSL_PROTOCOL_ERROR
 
-This means the browser can't establish an HTTPS connection. Common causes:
-
-1. **SSL certificate not issued yet**
-   - Check Coolify dashboard → Resource → SSL/TLS
-   - If pending, wait 1-5 minutes
-   - If failed, click "Issue Certificate" or check DNS
-
-2. **DNS not pointing to server**
-   - Run `nslookup api.ai.emirhanmamak.com` on your server
-   - The IP must match your server's public IP
-   - Wait for DNS propagation after changing
-
-3. **Coolify reverse proxy not configured**
-   - Ensure domain is set in Coolify resource settings
-   - Ensure port is set to `4000`
-   - Redeploy after making changes
+- **Certificate not issued yet:** Check Coolify → Resource → SSL/TLS. Wait 1-5 minutes.
+- **DNS not pointing to server:** Run `nslookup api.ai.emirhanmamak.com` on your server.
+- **Reverse proxy not configured:** Ensure domain and port `4000` are set. Redeploy.
 
 ### Container keeps restarting
 
-Check Coolify logs for errors:
-- `INITIAL_ADMIN_PASSWORD` not set → app crashes on first boot
-- `APP_ENCRYPTION_KEY` not set or too short (< 32 chars) → app crashes
+- `INITIAL_ADMIN_PASSWORD` not set → crashes on first boot
+- `APP_ENCRYPTION_KEY` too short (< 32 chars) → crashes
 
 ### Admin login doesn't work
 
-- Ensure `COOKIE_SECURE=true` (not `false`)
-- Ensure `TRUST_PROXY=true`
+- `COOKIE_SECURE=true` (not `false`)
+- `TRUST_PROXY=true`
 - Clear browser cookies and try again
-- Check that the session cookie is being set (browser DevTools → Application → Cookies)
+
+### Build fails with `tsc: not found`
+
+- Make sure you're using the latest Dockerfile from the repository
+- The builder stage installs devDependencies with `--include=dev`
 
 ### Gateway key not showing in logs
 
 - Check Coolify resource logs (not deployment logs)
-- The key is only printed on FIRST boot
-- If you redeployed without persistent storage, the DB was reset and a new key was generated
+- Only printed on FIRST boot
+- If redeployed without persistent storage, DB was reset
 
 ### Health check failing
 
-- The healthcheck hits `localhost:4000/health`
+- Healthcheck hits `localhost:4000/health`
 - Ensure `PORT=4000` is set
-- Check that the app started successfully in logs
+- Check app started successfully in logs
 
-## Security Notes
+## 6. Security Notes
 
 - Never expose port 4000 directly to the internet
-- Always use Coolify's reverse proxy for HTTPS termination
+- Always use Coolify's reverse proxy for HTTPS
 - Set `COOKIE_SECURE=true` and `TRUST_PROXY=true` in production
-- Regularly back up the SQLite database at `/data/mimo-router.sqlite`
+- Back up `/data/mimo-router.sqlite` regularly
