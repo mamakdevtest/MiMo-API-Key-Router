@@ -270,13 +270,12 @@ async function proxyRequest(
         continue;
       }
 
-      reply.status(upstreamResponse.status);
-      for (const [key, value] of upstreamResponse.headers.entries()) {
-        if (key.toLowerCase() === 'content-encoding') continue;
-        void reply.header(key, value);
-      }
-
       if (!upstreamResponse.body) {
+        reply.status(upstreamResponse.status);
+        for (const [key, value] of upstreamResponse.headers.entries()) {
+          if (key.toLowerCase() === 'content-encoding') continue;
+          void reply.header(key, value);
+        }
         await logRequest(db, {
           requestId,
           route,
@@ -291,8 +290,14 @@ async function proxyRequest(
         return reply.send();
       }
 
-      // Non-streaming: buffer response to extract token usage
+      // Non-streaming: buffer response to extract token usage and use normal Fastify send
       if (!isStreaming) {
+        reply.status(upstreamResponse.status);
+        for (const [key, value] of upstreamResponse.headers.entries()) {
+          if (key.toLowerCase() === 'content-encoding') continue;
+          void reply.header(key, value);
+        }
+
         const responseText = await upstreamResponse.text();
         let responseBody: unknown;
         try {
@@ -337,9 +342,23 @@ async function proxyRequest(
         return reply;
       }
 
-      // Streaming: pipe through and try to extract usage from final chunks
+      // Streaming: hijack Fastify and pipe manually to ensure chunks are sent immediately
+      reply.hijack();
+      const rawRes = reply.raw;
+      
+      rawRes.statusCode = upstreamResponse.status;
+      for (const [key, value] of upstreamResponse.headers.entries()) {
+        if (key.toLowerCase() === 'content-encoding') continue;
+        rawRes.setHeader(key, value);
+      }
+      
+      // Crucial for Nginx/VPS: disable proxy buffering for real-time streams
+      rawRes.setHeader('X-Accel-Buffering', 'no');
+      rawRes.setHeader('Cache-Control', 'no-cache');
+      rawRes.setHeader('Connection', 'keep-alive');
+
       const reader = upstreamResponse.body.getReader();
-      reply.raw.on('close', () => reader.cancel().catch(() => {}));
+      rawRes.on('close', () => reader.cancel().catch(() => {}));
 
       let lastChunks: string[] = [];
       const MAX_BUFFER_CHUNKS = 5;
