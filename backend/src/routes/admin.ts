@@ -315,6 +315,10 @@ export async function registerAdminRoutes(app: FastifyInstance, db: Db) {
         streaming: log.streaming,
         fallback: log.fallback,
         clientIp: log.clientIp,
+        promptTokens: log.promptTokens ?? 0,
+        completionTokens: log.completionTokens ?? 0,
+        totalTokens: log.totalTokens ?? 0,
+        estimatedCost: log.estimatedCost ?? 0,
       }))
     );
   });
@@ -368,7 +372,7 @@ export async function registerAdminRoutes(app: FastifyInstance, db: Db) {
       })
       .from(requestLogs)
       .where(gte(requestLogs.timestamp, since))
-      .groupBy(sql`strftime('%Y-%m-%d %d %H:00', ${requestLogs.timestamp})`);
+      .groupBy(sql`strftime('%Y-%m-%d %H:00', ${requestLogs.timestamp})`);
 
     // Usage by API Key
     const byKey = await db
@@ -403,7 +407,7 @@ export async function registerAdminRoutes(app: FastifyInstance, db: Db) {
       totals: {
         requests: totals?.totalRequests ?? 0,
         tokens: totals?.totalTokens ?? 0,
-        cost: Math.round((totals?.totalCost ?? 0) * 10000) / 10000,
+        cost: Math.round((totals?.totalCost ?? 0) * 100_000_000) / 100_000_000,
         avgLatency: Math.round(totals?.avgLatency ?? 0),
       },
       byModel: byModel.map((m) => ({
@@ -412,14 +416,14 @@ export async function registerAdminRoutes(app: FastifyInstance, db: Db) {
         totalTokens: m.totalTokens,
         promptTokens: m.promptTokens,
         completionTokens: m.completionTokens,
-        estimatedCost: Math.round(m.estimatedCost * 10000) / 10000,
+        estimatedCost: Math.round(m.estimatedCost * 100_000_000) / 100_000_000,
         avgLatency: Math.round(m.avgLatency),
       })),
       hourly: hourlyUsage.map((h) => ({
         hour: h.hour,
         requests: h.requests,
         totalTokens: h.totalTokens,
-        estimatedCost: Math.round(h.estimatedCost * 10000) / 10000,
+        estimatedCost: Math.round(h.estimatedCost * 100_000_000) / 100_000_000,
       })),
       byKey: byKey.map((k) => ({
         keyId: k.keyId || 'unknown',
@@ -428,7 +432,7 @@ export async function registerAdminRoutes(app: FastifyInstance, db: Db) {
         totalTokens: k.totalTokens,
         promptTokens: k.promptTokens,
         completionTokens: k.completionTokens,
-        estimatedCost: Math.round(k.estimatedCost * 10000) / 10000,
+        estimatedCost: Math.round(k.estimatedCost * 100_000_000) / 100_000_000,
         avgLatency: Math.round(k.avgLatency),
       })),
     });

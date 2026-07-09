@@ -30,8 +30,8 @@ function formatTokens(n: number): string {
 
 function formatCost(n: number): string {
   if (n >= 1) return `$${n.toFixed(2)}`;
-  if (n >= 0.01) return `$${n.toFixed(3)}`;
-  return `$${n.toFixed(4)}`;
+  if (n >= 0.01) return `$${n.toFixed(4)}`;
+  return `$${n.toFixed(6)}`;
 }
 
 export function Dashboard() {

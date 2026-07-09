@@ -25,6 +25,17 @@ describe('Key routing and failover', () => {
     expect(res.statusCode).toBe(201);
   }
 
+  async function getKeys(app: FastifyInstance) {
+    const session = await adminLogin(app);
+    const keysRes = await app.inject({
+      method: 'GET',
+      url: '/admin/keys',
+      cookies: { admin_session: session },
+      headers: { 'x-csrf-token': session },
+    });
+    return JSON.parse(keysRes.payload);
+  }
+
   it('uses key #1 when it succeeds', async () => {
     const { app, gatewayKey } = await buildTestApp();
     await addKey(app, 'Key 1', 'sk-key1', 0);
@@ -66,14 +77,7 @@ describe('Key routing and failover', () => {
     expect(res.statusCode).toBe(200);
     expect(vi.mocked(global.fetch)).toHaveBeenCalledTimes(2);
 
-    const session = await adminLogin(app);
-    const keysRes = await app.inject({
-      method: 'GET',
-      url: '/admin/keys',
-      cookies: { admin_session: session },
-      headers: { 'x-csrf-token': session },
-    });
-    const keys = JSON.parse(keysRes.payload);
+    const keys = await getKeys(app);
     expect(keys[0].status).toBe('exhausted');
     expect(keys[1].status).toBe('active');
   });
@@ -96,14 +100,7 @@ describe('Key routing and failover', () => {
 
     expect(res.statusCode).toBe(200);
 
-    const session = await adminLogin(app);
-    const keysRes = await app.inject({
-      method: 'GET',
-      url: '/admin/keys',
-      cookies: { admin_session: session },
-      headers: { 'x-csrf-token': session },
-    });
-    const keys = JSON.parse(keysRes.payload);
+    const keys = await getKeys(app);
     expect(keys[0].status).toBe('cooldown');
     expect(keys[0].cooldownUntil).not.toBeNull();
   });
@@ -126,15 +123,53 @@ describe('Key routing and failover', () => {
 
     expect(res.statusCode).toBe(200);
 
-    const session = await adminLogin(app);
-    const keysRes = await app.inject({
-      method: 'GET',
-      url: '/admin/keys',
-      cookies: { admin_session: session },
-      headers: { 'x-csrf-token': session },
-    });
-    const keys = JSON.parse(keysRes.payload);
+    const keys = await getKeys(app);
     expect(keys[0].status).toBe('invalid');
+  });
+
+  it('marks key disabled on 403 and tries key #2', async () => {
+    const { app, gatewayKey } = await buildTestApp();
+    await addKey(app, 'Key 1', 'sk-key1', 0);
+    await addKey(app, 'Key 2', 'sk-key2', 1);
+
+    vi.mocked(global.fetch)
+      .mockResolvedValueOnce(new Response('Forbidden', { status: 403 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ id: 'chatcmpl-2' }), { status: 200, headers: { 'content-type': 'application/json' } }));
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/v1/chat/completions',
+      headers: { authorization: `Bearer ${gatewayKey}`, 'content-type': 'application/json' },
+      payload: { model: 'mimo-v2.5', messages: [{ role: 'user', content: 'hi' }] },
+    });
+
+    expect(res.statusCode).toBe(200);
+
+    const keys = await getKeys(app);
+    expect(keys[0].status).toBe('disabled');
+  });
+
+  it('puts key on cooldown on 5xx and tries key #2', async () => {
+    const { app, gatewayKey } = await buildTestApp();
+    await addKey(app, 'Key 1', 'sk-key1', 0);
+    await addKey(app, 'Key 2', 'sk-key2', 1);
+
+    vi.mocked(global.fetch)
+      .mockResolvedValueOnce(new Response('Server error', { status: 500 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ id: 'chatcmpl-2' }), { status: 200, headers: { 'content-type': 'application/json' } }));
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/v1/chat/completions',
+      headers: { authorization: `Bearer ${gatewayKey}`, 'content-type': 'application/json' },
+      payload: { model: 'mimo-v2.5', messages: [{ role: 'user', content: 'hi' }] },
+    });
+
+    expect(res.statusCode).toBe(200);
+
+    const keys = await getKeys(app);
+    expect(keys[0].status).toBe('cooldown');
+    expect(keys[0].cooldownUntil).not.toBeNull();
   });
 
   it('returns 503 when all keys fail', async () => {

@@ -65,6 +65,10 @@ export function Logs() {
                     <th className="text-left py-2 px-2">Model</th>
                     <th className="text-left py-2 px-2">Status</th>
                     <th className="text-right py-2 px-2">Latency</th>
+                    <th className="text-right py-2 px-2">Prompt Tok</th>
+                    <th className="text-right py-2 px-2">Compl Tok</th>
+                    <th className="text-right py-2 px-2">Total Tok</th>
+                    <th className="text-right py-2 px-2">Cost</th>
                     <th className="text-center py-2 px-2">Stream</th>
                     <th className="text-center py-2 px-2">Fallback</th>
                     <th className="text-left py-2 px-2">Client IP</th>
@@ -72,7 +76,7 @@ export function Logs() {
                 </thead>
                 <tbody>
                   {logs.map((log) => (
-                    <tr key={log.id} className="border-b last:border-0">
+                    <tr key={log.id} className="border-b last:border-0 hover:bg-muted/10 transition-colors">
                       <td className="py-2 px-2 text-muted-foreground whitespace-nowrap">
                         {new Date(log.timestamp).toLocaleString()}
                       </td>
@@ -85,6 +89,18 @@ export function Logs() {
                       </td>
                       <td className="py-2 px-2 text-right text-muted-foreground">
                         {log.latencyMs < 1000 ? `${Math.round(log.latencyMs)}ms` : `${(log.latencyMs / 1000).toFixed(1)}s`}
+                      </td>
+                      <td className="py-2 px-2 text-right text-muted-foreground font-mono text-xs">
+                        {log.promptTokens ? log.promptTokens.toLocaleString() : '-'}
+                      </td>
+                      <td className="py-2 px-2 text-right text-muted-foreground font-mono text-xs">
+                        {log.completionTokens ? log.completionTokens.toLocaleString() : '-'}
+                      </td>
+                      <td className="py-2 px-2 text-right font-mono text-xs">
+                        {log.totalTokens ? log.totalTokens.toLocaleString() : '-'}
+                      </td>
+                      <td className="py-2 px-2 text-right font-mono text-xs text-green-400">
+                        {log.estimatedCost ? `$${log.estimatedCost.toFixed(6)}` : '-'}
                       </td>
                       <td className="py-2 px-2 text-center">
                         {log.streaming ? (

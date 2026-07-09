@@ -26,28 +26,51 @@ const MODEL_PRICING: Record<string, { input: number; output: number }> = {
   'mimo-v2.5-tts-voicedesign': { input: 0, output: 0 }, // free for limited time
 };
 
+// ── Low Credit Detection ──────────────────────────────────────
+const LOW_CREDIT_PATTERNS = [
+  'low credit',
+  'insufficient balance',
+  'balance not enough',
+  'quota exceeded',
+  'account balance',
+  'payment required',
+  'credits exhausted',
+  'billing',
+  'exceeded your current quota',
+  'insufficient_quota',
+  'insufficient funds',
+];
+
+function isLowCreditError(body: unknown): boolean {
+  if (!body) return false;
+  const text = typeof body === 'string' ? body : JSON.stringify(body);
+  const lower = text.toLowerCase();
+  return LOW_CREDIT_PATTERNS.some((p) => lower.includes(p));
+}
+
+// ── Pricing ──────────────────────────────────────────────────
 function findPricingForModel(model: string): { input: number; output: number } | undefined {
   const normalized = model.toLowerCase();
-  
+
   if (MODEL_PRICING[normalized]) return MODEL_PRICING[normalized];
-  
+
   const lastSlashIndex = normalized.lastIndexOf('/');
   if (lastSlashIndex !== -1) {
     const stripped = normalized.slice(lastSlashIndex + 1);
     if (MODEL_PRICING[stripped]) return MODEL_PRICING[stripped];
   }
-  
+
   const keys = Object.keys(MODEL_PRICING).sort((a, b) => b.length - a.length);
   for (const key of keys) {
     if (normalized.includes(key)) {
       return MODEL_PRICING[key];
     }
   }
-  
+
   if (normalized.includes('mimo')) {
     return MODEL_PRICING['mimo-v2.5'];
   }
-  
+
   return undefined;
 }
 
@@ -56,36 +79,45 @@ function calculateCost(model: string, promptTokens: number, completionTokens: nu
   if (!pricing) return 0;
   const inputCost = (promptTokens / 1_000_000) * pricing.input;
   const outputCost = (completionTokens / 1_000_000) * pricing.output;
-  return Math.round((inputCost + outputCost) * 10000) / 10000; // 4 decimal places
+  return Math.round((inputCost + outputCost) * 100_000_000) / 100_000_000; // 8 decimal places for micro-costs
 }
 
-function extractTokenUsage(body: unknown): { promptTokens: number; completionTokens: number; totalTokens: number } {
-  if (!body || typeof body !== 'object') return { promptTokens: 0, completionTokens: 0, totalTokens: 0 };
+// ── Token Usage Extraction ──────────────────────────────────
+// FIX: Merged OpenAI + Anthropic format into one block. Previously the Anthropic
+// branch (input_tokens/output_tokens) was dead code due to duplicate if-check.
+function extractTokenUsage(body: unknown): {
+  promptTokens: number;
+  completionTokens: number;
+  totalTokens: number;
+  cachedTokens: number;
+} {
+  const empty = { promptTokens: 0, completionTokens: 0, totalTokens: 0, cachedTokens: 0 };
+  if (!body || typeof body !== 'object') return empty;
   const obj = body as Record<string, unknown>;
 
-  // OpenAI format: { usage: { prompt_tokens, completion_tokens, total_tokens } }
-  if (obj.usage && typeof obj.usage === 'object') {
-    const usage = obj.usage as Record<string, unknown>;
-    return {
-      promptTokens: (usage.prompt_tokens as number) || 0,
-      completionTokens: (usage.completion_tokens as number) || 0,
-      totalTokens: (usage.total_tokens as number) || 0,
-    };
+  if (!obj.usage || typeof obj.usage !== 'object') return empty;
+  const usage = obj.usage as Record<string, unknown>;
+
+  // OpenAI: prompt_tokens / completion_tokens / total_tokens
+  // Anthropic: input_tokens / output_tokens
+  // Both are handled here — first found wins for each field
+  const promptTokens = (usage.prompt_tokens as number) || (usage.input_tokens as number) || 0;
+  const completionTokens = (usage.completion_tokens as number) || (usage.output_tokens as number) || 0;
+  const totalTokens = (usage.total_tokens as number) || (promptTokens + completionTokens);
+
+  // Cached tokens: Anthropic uses cache_read_input_tokens,
+  // OpenAI uses prompt_tokens_details.cached_tokens
+  let cachedTokens = 0;
+  if (typeof usage.cache_read_input_tokens === 'number') {
+    cachedTokens = usage.cache_read_input_tokens;
+  } else if (usage.prompt_tokens_details && typeof usage.prompt_tokens_details === 'object') {
+    const details = usage.prompt_tokens_details as Record<string, unknown>;
+    if (typeof details.cached_tokens === 'number') {
+      cachedTokens = details.cached_tokens;
+    }
   }
 
-  // Anthropic format: { usage: { input_tokens, output_tokens } }
-  if (obj.usage && typeof obj.usage === 'object') {
-    const usage = obj.usage as Record<string, unknown>;
-    const inputTokens = (usage.input_tokens as number) || 0;
-    const outputTokens = (usage.output_tokens as number) || 0;
-    return {
-      promptTokens: inputTokens,
-      completionTokens: outputTokens,
-      totalTokens: inputTokens + outputTokens,
-    };
-  }
-
-  return { promptTokens: 0, completionTokens: 0, totalTokens: 0 };
+  return { promptTokens, completionTokens, totalTokens, cachedTokens };
 }
 
 function generateRequestId(): string {
@@ -132,6 +164,7 @@ function buildAnthropicHeaders(request: FastifyRequest, upstreamKey: string): Re
   return headers;
 }
 
+// ── Main Proxy Handler ──────────────────────────────────────
 async function proxyRequest(
   app: FastifyInstance,
   request: FastifyRequest,
@@ -148,9 +181,6 @@ async function proxyRequest(
   const clientIp = getClientIp(request);
   const route = request.url;
   let model: string | null = null;
-  let fallback = false;
-  let selectedKeyId: string | null = null;
-  let selectedKeyLabel: string | null = null;
 
   try {
     const body = request.body as Record<string, unknown> | undefined;
@@ -161,38 +191,65 @@ async function proxyRequest(
     // ignore
   }
 
-  let previousKeyId: string | undefined;
+  // FIX: Broadcast request_started ONCE (outside the retry loop)
+  streamManager.broadcast({
+    type: 'request_started',
+    requestId,
+    model: model || 'unknown',
+    streaming: isStreaming,
+    timestamp: Date.now(),
+  });
+
+  const triedKeyIds = new Set<string>();
   let attempts = 0;
   const maxAttempts = 10;
+  let lastSelectedKeyId: string | null = null;
+  let lastSelectedKeyLabel: string | null = null;
 
   while (attempts < maxAttempts) {
     attempts++;
-    const selected = await router.selectKey(previousKeyId);
+    const selected = await router.selectKey(triedKeyIds);
     if (!selected) {
+      // No more keys available
+      streamManager.broadcast({
+        type: 'request_completed',
+        requestId,
+        model: model || 'unknown',
+        success: false,
+        statusCode: 503,
+        errorMessage: 'No available API keys',
+        attempt: attempts,
+        timestamp: Date.now(),
+      });
+
       await logRequest(db, {
         requestId,
         route,
         model,
-        apiKeyId: selectedKeyId,
+        apiKeyId: lastSelectedKeyId,
         statusCode: 503,
         latencyMs: Date.now() - startTime,
         streaming: isStreaming,
-        fallback,
+        fallback: triedKeyIds.size > 0,
         clientIp,
       });
       return reply.status(503).send({ error: 'Service Unavailable', message: 'No available API keys' });
     }
 
-    selectedKeyId = selected.id;
-    selectedKeyLabel = selected.label;
-    fallback = selected.fallback;
+    lastSelectedKeyId = selected.id;
+    lastSelectedKeyLabel = selected.label;
+    triedKeyIds.add(selected.id);
 
+    // Broadcast key selection event
     streamManager.broadcast({
-      type: 'request_started',
+      type: 'key_selected',
+      requestId,
       keyId: selected.id,
       label: selected.label,
       model: model || 'unknown',
-      timestamp: Date.now()
+      attempt: attempts,
+      fallback: selected.fallback,
+      timestamp: Date.now(),
     });
 
     const url = `${baseUrl}${path}`;
@@ -202,6 +259,17 @@ async function proxyRequest(
       const controller = new AbortController();
       const timeoutMs = (await db.query.settings.findFirst())?.requestTimeoutSeconds ?? 120;
       const timeout = setTimeout(() => controller.abort(), timeoutMs * 1000);
+
+      // Broadcast upstream sent
+      streamManager.broadcast({
+        type: 'upstream_sent',
+        requestId,
+        keyId: selected.id,
+        label: selected.label,
+        model: model || 'unknown',
+        attempt: attempts,
+        timestamp: Date.now(),
+      });
 
       const upstreamResponse = await fetch(url, {
         method: request.method,
@@ -214,15 +282,43 @@ async function proxyRequest(
 
       clearTimeout(timeout);
 
-      await router.recordUsage(selected.id);
+      // Broadcast upstream response received
+      streamManager.broadcast({
+        type: 'upstream_response',
+        requestId,
+        keyId: selected.id,
+        label: selected.label,
+        statusCode: upstreamResponse.status,
+        attempt: attempts,
+        timestamp: Date.now(),
+      });
 
+      // ── HTTP Error-Based Failover ────────────────────────────
       if (upstreamResponse.status === 402) {
         await router.markKeyState(selected.id, {
           status: 'exhausted',
           lastErrorCode: 402,
           lastErrorMessage: 'Payment required',
         });
-        previousKeyId = selected.id;
+        streamManager.broadcast({
+          type: 'key_failed',
+          requestId,
+          keyId: selected.id,
+          label: selected.label,
+          statusCode: 402,
+          keyStatus: 'exhausted',
+          errorMessage: 'Payment required',
+          attempt: attempts,
+          timestamp: Date.now(),
+        });
+        streamManager.broadcast({
+          type: 'failover_attempted',
+          requestId,
+          keyId: selected.id,
+          label: selected.label,
+          attempt: attempts,
+          timestamp: Date.now(),
+        });
         continue;
       }
 
@@ -234,7 +330,25 @@ async function proxyRequest(
           lastErrorCode: 429,
           lastErrorMessage: 'Rate limited',
         });
-        previousKeyId = selected.id;
+        streamManager.broadcast({
+          type: 'key_failed',
+          requestId,
+          keyId: selected.id,
+          label: selected.label,
+          statusCode: 429,
+          keyStatus: 'cooldown',
+          errorMessage: 'Rate limited',
+          attempt: attempts,
+          timestamp: Date.now(),
+        });
+        streamManager.broadcast({
+          type: 'failover_attempted',
+          requestId,
+          keyId: selected.id,
+          label: selected.label,
+          attempt: attempts,
+          timestamp: Date.now(),
+        });
         continue;
       }
 
@@ -244,7 +358,25 @@ async function proxyRequest(
           lastErrorCode: 401,
           lastErrorMessage: 'Invalid key',
         });
-        previousKeyId = selected.id;
+        streamManager.broadcast({
+          type: 'key_failed',
+          requestId,
+          keyId: selected.id,
+          label: selected.label,
+          statusCode: 401,
+          keyStatus: 'invalid',
+          errorMessage: 'Invalid key',
+          attempt: attempts,
+          timestamp: Date.now(),
+        });
+        streamManager.broadcast({
+          type: 'failover_attempted',
+          requestId,
+          keyId: selected.id,
+          label: selected.label,
+          attempt: attempts,
+          timestamp: Date.now(),
+        });
         continue;
       }
 
@@ -254,7 +386,25 @@ async function proxyRequest(
           lastErrorCode: 403,
           lastErrorMessage: 'Forbidden',
         });
-        previousKeyId = selected.id;
+        streamManager.broadcast({
+          type: 'key_failed',
+          requestId,
+          keyId: selected.id,
+          label: selected.label,
+          statusCode: 403,
+          keyStatus: 'disabled',
+          errorMessage: 'Forbidden',
+          attempt: attempts,
+          timestamp: Date.now(),
+        });
+        streamManager.broadcast({
+          type: 'failover_attempted',
+          requestId,
+          keyId: selected.id,
+          label: selected.label,
+          attempt: attempts,
+          timestamp: Date.now(),
+        });
         continue;
       }
 
@@ -266,10 +416,32 @@ async function proxyRequest(
           lastErrorCode: upstreamResponse.status,
           lastErrorMessage: 'Server error',
         });
-        previousKeyId = selected.id;
+        streamManager.broadcast({
+          type: 'key_failed',
+          requestId,
+          keyId: selected.id,
+          label: selected.label,
+          statusCode: upstreamResponse.status,
+          keyStatus: 'cooldown',
+          errorMessage: `Server error (${upstreamResponse.status})`,
+          attempt: attempts,
+          timestamp: Date.now(),
+        });
+        streamManager.broadcast({
+          type: 'failover_attempted',
+          requestId,
+          keyId: selected.id,
+          label: selected.label,
+          attempt: attempts,
+          timestamp: Date.now(),
+        });
         continue;
       }
 
+      // Record usage for successful selection
+      await router.recordUsage(selected.id);
+
+      // ── No Body Response ─────────────────────────────────────
       if (!upstreamResponse.body) {
         reply.status(upstreamResponse.status);
         for (const [key, value] of upstreamResponse.headers.entries()) {
@@ -284,20 +456,26 @@ async function proxyRequest(
           statusCode: upstreamResponse.status,
           latencyMs: Date.now() - startTime,
           streaming: isStreaming,
-          fallback,
+          fallback: selected.fallback,
           clientIp,
+        });
+
+        streamManager.broadcast({
+          type: 'request_completed',
+          requestId,
+          keyId: selected.id,
+          label: selected.label,
+          model: model || 'unknown',
+          success: true,
+          statusCode: upstreamResponse.status,
+          attempt: attempts,
+          timestamp: Date.now(),
         });
         return reply.send();
       }
 
-      // Non-streaming: buffer response to extract token usage and use normal Fastify send
+      // ── Non-Streaming Response ───────────────────────────────
       if (!isStreaming) {
-        reply.status(upstreamResponse.status);
-        for (const [key, value] of upstreamResponse.headers.entries()) {
-          if (key.toLowerCase() === 'content-encoding') continue;
-          void reply.header(key, value);
-        }
-
         const responseText = await upstreamResponse.text();
         let responseBody: unknown;
         try {
@@ -306,12 +484,47 @@ async function proxyRequest(
           responseBody = null;
         }
 
+        // FIX: Check response body for low-credit errors even on 200
+        if (isLowCreditError(responseBody ?? responseText)) {
+          await router.markKeyState(selected.id, {
+            status: 'exhausted',
+            lastErrorCode: upstreamResponse.status,
+            lastErrorMessage: 'Low credit detected in response body',
+          });
+          streamManager.broadcast({
+            type: 'key_failed',
+            requestId,
+            keyId: selected.id,
+            label: selected.label,
+            statusCode: upstreamResponse.status,
+            keyStatus: 'exhausted',
+            errorMessage: 'Low credit detected in response body',
+            attempt: attempts,
+            timestamp: Date.now(),
+          });
+          streamManager.broadcast({
+            type: 'failover_attempted',
+            requestId,
+            keyId: selected.id,
+            label: selected.label,
+            attempt: attempts,
+            timestamp: Date.now(),
+          });
+          continue;
+        }
+
         const tokens = extractTokenUsage(responseBody);
         const cost = calculateCost(model || '', tokens.promptTokens, tokens.completionTokens);
 
+        reply.status(upstreamResponse.status);
+        for (const [key, value] of upstreamResponse.headers.entries()) {
+          if (key.toLowerCase() === 'content-encoding') continue;
+          void reply.header(key, value);
+        }
         reply.header('content-type', upstreamResponse.headers.get('content-type') || 'application/json');
         reply.send(responseText);
 
+        // Token/cost only logged for the successful final attempt
         await logRequest(db, {
           requestId,
           route,
@@ -320,7 +533,7 @@ async function proxyRequest(
           statusCode: upstreamResponse.status,
           latencyMs: Date.now() - startTime,
           streaming: false,
-          fallback,
+          fallback: selected.fallback,
           clientIp,
           promptTokens: tokens.promptTokens,
           completionTokens: tokens.completionTokens,
@@ -330,28 +543,48 @@ async function proxyRequest(
 
         streamManager.broadcast({
           type: 'request_completed',
+          requestId,
           keyId: selected.id,
           label: selected.label,
           model: model || 'unknown',
           tokens: tokens.totalTokens,
+          promptTokens: tokens.promptTokens,
+          completionTokens: tokens.completionTokens,
           cost,
           success: true,
-          timestamp: Date.now()
+          statusCode: upstreamResponse.status,
+          attempt: attempts,
+          fallback: selected.fallback,
+          timestamp: Date.now(),
         });
 
         return reply;
       }
 
-      // Streaming: hijack Fastify and pipe manually to ensure chunks are sent immediately
+      // ── Streaming Response ───────────────────────────────────
+      // FIX: Only hijack AFTER confirming the upstream returned a success status.
+      // Once hijacked, we CANNOT retry — this is by design. Streaming data has
+      // already been committed to the client.
+      streamManager.broadcast({
+        type: 'streaming_started',
+        requestId,
+        keyId: selected.id,
+        label: selected.label,
+        model: model || 'unknown',
+        streaming: true,
+        attempt: attempts,
+        timestamp: Date.now(),
+      });
+
       reply.hijack();
       const rawRes = reply.raw;
-      
+
       rawRes.statusCode = upstreamResponse.status;
       for (const [key, value] of upstreamResponse.headers.entries()) {
         if (key.toLowerCase() === 'content-encoding') continue;
         rawRes.setHeader(key, value);
       }
-      
+
       // Crucial for Nginx/VPS: disable proxy buffering for real-time streams
       rawRes.setHeader('X-Accel-Buffering', 'no');
       rawRes.setHeader('Cache-Control', 'no-cache');
@@ -378,12 +611,13 @@ async function proxyRequest(
         }
       } catch (err) {
         request.log.warn({ err }, 'Stream interrupted');
+        // After streaming has started, NO RETRY/FALLBACK — data already sent
       } finally {
         reader.releaseLock();
       }
 
       // Try to extract token usage from buffered SSE chunks
-      let tokens = { promptTokens: 0, completionTokens: 0, totalTokens: 0 };
+      let tokens = { promptTokens: 0, completionTokens: 0, totalTokens: 0, cachedTokens: 0 };
       for (const chunk of lastChunks) {
         const lines = chunk.split('\n');
         for (const line of lines) {
@@ -403,6 +637,7 @@ async function proxyRequest(
 
       const cost = calculateCost(model || '', tokens.promptTokens, tokens.completionTokens);
 
+      // Token/cost only for the successful streaming response
       await logRequest(db, {
         requestId,
         route,
@@ -411,7 +646,7 @@ async function proxyRequest(
         statusCode: upstreamResponse.status,
         latencyMs: Date.now() - startTime,
         streaming: true,
-        fallback,
+        fallback: selected.fallback,
         clientIp,
         promptTokens: tokens.promptTokens,
         completionTokens: tokens.completionTokens,
@@ -420,60 +655,109 @@ async function proxyRequest(
       });
 
       streamManager.broadcast({
-        type: 'request_completed',
+        type: 'streaming_completed',
+        requestId,
         keyId: selected.id,
         label: selected.label,
         model: model || 'unknown',
         tokens: tokens.totalTokens,
+        promptTokens: tokens.promptTokens,
+        completionTokens: tokens.completionTokens,
         cost,
         success: true,
-        timestamp: Date.now()
+        statusCode: upstreamResponse.status,
+        streaming: true,
+        attempt: attempts,
+        fallback: selected.fallback,
+        timestamp: Date.now(),
+      });
+
+      streamManager.broadcast({
+        type: 'request_completed',
+        requestId,
+        keyId: selected.id,
+        label: selected.label,
+        model: model || 'unknown',
+        tokens: tokens.totalTokens,
+        promptTokens: tokens.promptTokens,
+        completionTokens: tokens.completionTokens,
+        cost,
+        success: true,
+        streaming: true,
+        attempt: attempts,
+        fallback: selected.fallback,
+        timestamp: Date.now(),
       });
 
       return reply.raw.end();
     } catch (err) {
       const error = err as Error;
+
+      // Determine the appropriate key state
+      let keyStatus: 'cooldown' = 'cooldown';
+      let errorCode = 0;
+      let errorMessage = error.message;
+
       if (error.name === 'AbortError') {
-        const duration = await router.getCooldownDuration(0);
-        await router.markKeyState(selected.id, {
-          status: 'cooldown',
-          cooldownUntil: new Date(Date.now() + duration * 1000),
-          lastErrorCode: 408,
-          lastErrorMessage: 'Request timeout',
-        });
-        previousKeyId = selected.id;
-        continue;
+        errorCode = 408;
+        errorMessage = 'Request timeout';
       }
 
-      const duration = await router.getCooldownDuration(0);
+      const duration = await router.getCooldownDuration(errorCode);
       await router.markKeyState(selected.id, {
-        status: 'cooldown',
+        status: keyStatus,
         cooldownUntil: new Date(Date.now() + duration * 1000),
-        lastErrorCode: 0,
-        lastErrorMessage: error.message,
+        lastErrorCode: errorCode,
+        lastErrorMessage: errorMessage,
       });
+
       streamManager.broadcast({
-        type: 'request_completed',
+        type: 'key_failed',
+        requestId,
         keyId: selected.id,
         label: selected.label,
         model: model || 'unknown',
-        success: false,
-        timestamp: Date.now()
+        keyStatus,
+        errorMessage,
+        errorCode,
+        attempt: attempts,
+        timestamp: Date.now(),
       });
-      previousKeyId = selected.id;
+
+      streamManager.broadcast({
+        type: 'failover_attempted',
+        requestId,
+        keyId: selected.id,
+        label: selected.label,
+        attempt: attempts,
+        timestamp: Date.now(),
+      });
+
       continue;
     }
   }
+
+  // All keys exhausted
+  streamManager.broadcast({
+    type: 'request_completed',
+    requestId,
+    model: model || 'unknown',
+    success: false,
+    statusCode: 503,
+    errorMessage: 'All keys failed after maximum attempts',
+    attempt: attempts,
+    timestamp: Date.now(),
+  });
 
   await logRequest(db, {
     requestId,
     route,
     model,
-    apiKeyId: selectedKeyId,
+    apiKeyId: lastSelectedKeyId,
     statusCode: 503,
     latencyMs: Date.now() - startTime,
     streaming: isStreaming,
-    fallback,
+    fallback: true,
     clientIp,
   });
 

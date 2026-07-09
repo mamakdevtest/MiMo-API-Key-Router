@@ -15,6 +15,10 @@ export interface LogEntry {
   completionTokens?: number;
   totalTokens?: number;
   estimatedCost?: number;
+  /** Which attempt this log represents (1-based). Omit for final/only log. */
+  attempt?: number;
+  /** Error message for failed attempts */
+  errorMessage?: string | null;
 }
 
 export async function logRequest(db: Db, entry: LogEntry) {

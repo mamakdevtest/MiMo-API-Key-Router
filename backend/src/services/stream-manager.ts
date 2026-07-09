@@ -1,13 +1,36 @@
 import type { FastifyReply } from 'fastify';
 
+export type StreamEventType =
+  | 'connected'
+  | 'ping'
+  | 'request_started'
+  | 'key_selected'
+  | 'upstream_sent'
+  | 'upstream_response'
+  | 'streaming_started'
+  | 'streaming_completed'
+  | 'key_failed'
+  | 'failover_attempted'
+  | 'request_completed';
+
 export interface StreamEvent {
-  type: string;
+  type: StreamEventType;
+  requestId?: string;
   keyId?: string;
   label?: string;
   model?: string;
   tokens?: number;
+  promptTokens?: number;
+  completionTokens?: number;
   cost?: number;
   success?: boolean;
+  statusCode?: number;
+  errorMessage?: string;
+  errorCode?: number;
+  keyStatus?: string;
+  streaming?: boolean;
+  attempt?: number;
+  fallback?: boolean;
   timestamp: number;
 }
 

@@ -214,6 +214,10 @@ export const api = {
         streaming: boolean;
         fallback: boolean;
         clientIp: string | null;
+        promptTokens?: number;
+        completionTokens?: number;
+        totalTokens?: number;
+        estimatedCost?: number;
       }>>(`/admin/logs?limit=${limit}&offset=${offset}`),
   },
   tempKeys: {
