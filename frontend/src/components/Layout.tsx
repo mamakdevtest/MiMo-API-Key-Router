@@ -13,7 +13,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
     { path: '/providers', label: 'Providers', icon: Server },
     { path: '/model-catalog', label: 'Model Catalog', icon: Database },
     { path: '/routes', label: 'Routes', icon: GitBranch },
-    { path: '/keys', label: 'Gateway Keys', icon: KeyRound },
+    { path: '/keys', label: 'Router Keys', icon: KeyRound },
     { path: '/requests', label: 'Requests', icon: ScrollText },
     { path: '/settings', label: 'Settings', icon: Settings },
     { path: '/docs', label: 'Docs', icon: BookOpen },

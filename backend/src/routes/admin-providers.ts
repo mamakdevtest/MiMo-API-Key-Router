@@ -39,6 +39,14 @@ const createCredentialSchema = z.object({
   priority: z.number().int().min(0).optional(),
 });
 
+const bulkCreateCredentialsSchema = z.object({
+  credentials: z.array(z.object({
+    name: z.string().min(1).max(100),
+    secret: z.string().min(1),
+  })).min(1),
+  startPriority: z.number().int().min(0).optional(),
+});
+
 export async function registerAdminProviderRoutes(app: FastifyInstance, db: Db) {
   const providerService = new ProviderService(db);
   const modelSyncService = new ModelSyncService(db);
@@ -185,6 +193,39 @@ export async function registerAdminProviderRoutes(app: FastifyInstance, db: Db) 
       maskedSecret: cred.maskedSecret,
       priority: cred.priority,
       status: cred.status,
+    });
+  });
+
+  app.post('/admin/providers/:id/credentials/bulk', async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const parsed = bulkCreateCredentialsSchema.safeParse(request.body);
+    if (!parsed.success) return reply.status(400).send({ error: 'Bad Request', message: parsed.error.message });
+
+    const provider = await providerService.getById(id);
+    if (!provider) return reply.status(404).send({ error: 'Provider not found' });
+
+    const existing = await providerService.listCredentials(id);
+    const occupiedPriorities = new Set(existing.map((cred) => cred.priority));
+    let nextPriority = parsed.data.startPriority ?? 0;
+
+    for (const credential of parsed.data.credentials) {
+      while (occupiedPriorities.has(nextPriority)) {
+        nextPriority += 1;
+      }
+
+      await providerService.createCredential(id, {
+        name: credential.name,
+        secret: credential.secret,
+        priority: nextPriority,
+      });
+
+      occupiedPriorities.add(nextPriority);
+      nextPriority += 1;
+    }
+
+    return reply.status(201).send({
+      success: true,
+      count: parsed.data.credentials.length,
     });
   });
 

@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Server, Plus, CheckCircle2, XCircle, AlertTriangle, Clock, RefreshCw, Settings, Key, Database } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
@@ -29,10 +30,27 @@ const HEALTH_ICONS: Record<string, typeof CheckCircle2> = {
 };
 
 export function Providers() {
+  const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { toast } = useToast();
   const [showCreate, setShowCreate] = useState(false);
   const [newProvider, setNewProvider] = useState({ type: 'featherless', name: '', slug: '', baseUrl: 'https://api.featherless.ai' });
+
+  const providerPreset = useMemo(() => {
+    if (newProvider.type === 'mimo') {
+      return {
+        namePlaceholder: 'My MiMo Account',
+        slugPlaceholder: 'mimo-main',
+        baseUrl: 'https://api.xiaomimimo.com/v1',
+      };
+    }
+
+    return {
+      namePlaceholder: 'My Featherless Account',
+      slugPlaceholder: 'featherless-main',
+      baseUrl: 'https://api.featherless.ai',
+    };
+  }, [newProvider.type]);
 
   const { data: providers, isLoading } = useQuery({
     queryKey: ['providers'],
@@ -42,10 +60,11 @@ export function Providers() {
 
   const createMutation = useMutation({
     mutationFn: (data: any) => api.providers.create(data),
-    onSuccess: () => {
+    onSuccess: (created: any) => {
       queryClient.invalidateQueries({ queryKey: ['providers'] });
       setShowCreate(false);
-      toast({ title: 'Provider created', description: 'New provider has been added successfully.' });
+      toast({ title: 'Provider created', description: 'Now add provider-specific API keys for this account.' });
+      navigate(`/providers/${created.id}`);
     },
     onError: (err: Error) => toast({ title: 'Error', description: err.message }),
   });
@@ -86,23 +105,30 @@ export function Providers() {
               <div>
                 <Label>Type</Label>
                 <select className="w-full mt-1 p-2 rounded-md bg-background border" value={newProvider.type}
-                  onChange={e => setNewProvider(p => ({ ...p, type: e.target.value }))}>
+                  onChange={e => setNewProvider(p => ({
+                    ...p,
+                    type: e.target.value,
+                    baseUrl: e.target.value === 'mimo' ? 'https://api.xiaomimimo.com/v1' : 'https://api.featherless.ai',
+                  }))}>
                   <option value="featherless">Featherless.ai</option>
                   <option value="mimo">Xiaomi MiMo</option>
                 </select>
               </div>
               <div>
                 <Label>Name</Label>
-                <Input value={newProvider.name} onChange={e => setNewProvider(p => ({ ...p, name: e.target.value }))} placeholder="My Featherless Account" />
+                <Input value={newProvider.name} onChange={e => setNewProvider(p => ({ ...p, name: e.target.value }))} placeholder={providerPreset.namePlaceholder} />
               </div>
               <div>
                 <Label>Slug</Label>
-                <Input value={newProvider.slug} onChange={e => setNewProvider(p => ({ ...p, slug: e.target.value }))} placeholder="featherless-main" />
+                <Input value={newProvider.slug} onChange={e => setNewProvider(p => ({ ...p, slug: e.target.value }))} placeholder={providerPreset.slugPlaceholder} />
               </div>
               <div>
                 <Label>Base URL</Label>
                 <Input value={newProvider.baseUrl} onChange={e => setNewProvider(p => ({ ...p, baseUrl: e.target.value }))} />
               </div>
+              <p className="text-xs text-muted-foreground">
+                Each provider keeps its own API key pool. After creation, you will be taken to that provider's key screen.
+              </p>
               <Button onClick={() => createMutation.mutate(newProvider)} disabled={createMutation.isPending} className="w-full">
                 {createMutation.isPending ? 'Creating...' : 'Create Provider'}
               </Button>

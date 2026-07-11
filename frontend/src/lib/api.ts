@@ -264,6 +264,8 @@ export const api = {
     credentials: {
       list: (providerId: string) => fetchJson<any[]>(`/admin/providers/${providerId}/credentials`),
       create: (providerId: string, data: any) => fetchJson<any>(`/admin/providers/${providerId}/credentials`, { method: 'POST', body: JSON.stringify(data) }),
+      bulkCreate: (providerId: string, data: { credentials: Array<{ name: string; secret: string }>; startPriority?: number }) =>
+        fetchJson<{ success: boolean; count: number }>(`/admin/providers/${providerId}/credentials/bulk`, { method: 'POST', body: JSON.stringify(data) }),
       update: (providerId: string, credId: string, data: any) => fetchJson<{ success: boolean }>(`/admin/providers/${providerId}/credentials/${credId}`, { method: 'PATCH', body: JSON.stringify(data) }),
       delete: (providerId: string, credId: string) => fetchJson<{ success: boolean }>(`/admin/providers/${providerId}/credentials/${credId}`, { method: 'DELETE' }),
       test: (providerId: string, credId: string) => fetchJson<any>(`/admin/providers/${providerId}/credentials/${credId}/test`, { method: 'POST', body: '{}' }),

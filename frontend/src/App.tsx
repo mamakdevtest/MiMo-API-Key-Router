@@ -6,6 +6,7 @@ import { Login } from './pages/Login';
 import { Layout } from './components/Layout';
 import { Dashboard } from './pages/Dashboard';
 import { Providers } from './pages/Providers';
+import { ProviderDetails } from './pages/ProviderDetails';
 import { ModelCatalog } from './pages/ModelCatalog';
 import { Routes as RoutesPage } from './pages/Routes';
 import { Keys } from './pages/Keys';
@@ -86,6 +87,7 @@ function App() {
         <Routes>
           <Route path="/" element={<Dashboard />} />
           <Route path="/providers" element={<Providers />} />
+          <Route path="/providers/:id" element={<ProviderDetails />} />
           <Route path="/model-catalog" element={<ModelCatalog />} />
           <Route path="/routes" element={<RoutesPage />} />
           <Route path="/keys" element={<Keys />} />
