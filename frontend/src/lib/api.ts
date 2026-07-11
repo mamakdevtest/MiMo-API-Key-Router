@@ -247,4 +247,54 @@ export const api = {
     revoke: (id: string) => fetchJson<{ success: boolean }>(`/admin/temp-keys/${id}/revoke`, { method: 'POST', body: '{}' }),
     reactivate: (id: string) => fetchJson<{ success: boolean }>(`/admin/temp-keys/${id}/reactivate`, { method: 'POST', body: '{}' }),
   },
+  // ── Provider management ──────────────────────────────────
+  providers: {
+    list: () => fetchJson<Array<any>>('/admin/providers'),
+    get: (id: string) => fetchJson<any>(`/admin/providers/${id}`),
+    create: (data: any) => fetchJson<any>('/admin/providers', { method: 'POST', body: JSON.stringify(data) }),
+    update: (id: string, data: any) => fetchJson<{ success: boolean }>(`/admin/providers/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
+    delete: (id: string) => fetchJson<{ success: boolean }>(`/admin/providers/${id}`, { method: 'DELETE' }),
+    enable: (id: string) => fetchJson<{ success: boolean }>(`/admin/providers/${id}/enable`, { method: 'POST', body: '{}' }),
+    disable: (id: string) => fetchJson<{ success: boolean }>(`/admin/providers/${id}/disable`, { method: 'POST', body: '{}' }),
+    test: (id: string) => fetchJson<any>(`/admin/providers/${id}/test`, { method: 'POST', body: '{}' }),
+    syncModels: (id: string) => fetchJson<any>(`/admin/providers/${id}/sync-models`, { method: 'POST', body: '{}' }),
+    getPlan: (id: string) => fetchJson<any>(`/admin/providers/${id}/plan`),
+    getConcurrency: (id: string) => fetchJson<any>(`/admin/providers/${id}/concurrency`),
+    getModels: (id: string) => fetchJson<any[]>(`/admin/providers/${id}/models`),
+    credentials: {
+      list: (providerId: string) => fetchJson<any[]>(`/admin/providers/${providerId}/credentials`),
+      create: (providerId: string, data: any) => fetchJson<any>(`/admin/providers/${providerId}/credentials`, { method: 'POST', body: JSON.stringify(data) }),
+      update: (providerId: string, credId: string, data: any) => fetchJson<{ success: boolean }>(`/admin/providers/${providerId}/credentials/${credId}`, { method: 'PATCH', body: JSON.stringify(data) }),
+      delete: (providerId: string, credId: string) => fetchJson<{ success: boolean }>(`/admin/providers/${providerId}/credentials/${credId}`, { method: 'DELETE' }),
+      test: (providerId: string, credId: string) => fetchJson<any>(`/admin/providers/${providerId}/credentials/${credId}/test`, { method: 'POST', body: '{}' }),
+      reset: (providerId: string, credId: string) => fetchJson<{ success: boolean }>(`/admin/providers/${providerId}/credentials/${credId}/reset`, { method: 'POST', body: '{}' }),
+      enable: (providerId: string, credId: string) => fetchJson<{ success: boolean }>(`/admin/providers/${providerId}/credentials/${credId}/enable`, { method: 'POST', body: '{}' }),
+      disable: (providerId: string, credId: string) => fetchJson<{ success: boolean }>(`/admin/providers/${providerId}/credentials/${credId}/disable`, { method: 'POST', body: '{}' }),
+    },
+  },
+  // ── Model routes ──────────────────────────────────────────
+  modelRoutes: {
+    list: () => fetchJson<any[]>('/admin/routes'),
+    get: (id: string) => fetchJson<any>(`/admin/routes/${id}`),
+    create: (data: any) => fetchJson<any>('/admin/routes', { method: 'POST', body: JSON.stringify(data) }),
+    update: (id: string, data: any) => fetchJson<{ success: boolean }>(`/admin/routes/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
+    delete: (id: string) => fetchJson<{ success: boolean }>(`/admin/routes/${id}`, { method: 'DELETE' }),
+    enable: (id: string) => fetchJson<{ success: boolean }>(`/admin/routes/${id}/enable`, { method: 'POST', body: '{}' }),
+    disable: (id: string) => fetchJson<{ success: boolean }>(`/admin/routes/${id}/disable`, { method: 'POST', body: '{}' }),
+    targets: {
+      list: (routeId: string) => fetchJson<any[]>(`/admin/routes/${routeId}/targets`),
+      add: (routeId: string, data: any) => fetchJson<any>(`/admin/routes/${routeId}/targets`, { method: 'POST', body: JSON.stringify(data) }),
+      delete: (routeId: string, targetId: string) => fetchJson<{ success: boolean }>(`/admin/routes/${routeId}/targets/${targetId}`, { method: 'DELETE' }),
+    },
+  },
+  // ── Model catalog ─────────────────────────────────────────
+  modelCatalog: {
+    list: (page = 1, perPage = 50, search?: string) =>
+      fetchJson<{ models: any[]; page: number; perPage: number; total: number }>(
+        `/admin/model-catalog?page=${page}&perPage=${perPage}${search ? `&search=${encodeURIComponent(search)}` : ''}`
+      ),
+  },
+  // ── Available models for route target selection ──────────
+  availableModels: (providerId?: string) =>
+    fetchJson<any[]>(`/admin/available-models${providerId ? `?providerId=${providerId}` : ''}`),
 };

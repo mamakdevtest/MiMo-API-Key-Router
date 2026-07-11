@@ -1,3 +1,5 @@
+// ── Shared types for the Multi-Provider AI Gateway ──────────
+
 export type ApiKeyStatus = 'active' | 'cooldown' | 'exhausted' | 'disabled' | 'invalid';
 
 export interface ApiKey {
@@ -152,4 +154,59 @@ export interface LoginResponse {
 export interface ErrorResponse {
   error: string;
   message?: string;
+}
+
+// ── Multi-Provider types ───────────────────────────────────
+
+export type ProviderType = 'mimo' | 'featherless';
+export type BillingMode = 'subscription' | 'per_request' | 'unknown';
+export type CredentialStatus = 'active' | 'cooldown' | 'exhausted' | 'invalid' | 'disabled';
+export type ProviderHealthStatus = 'healthy' | 'degraded' | 'capacity_limited' | 'unavailable' | 'disabled' | 'unknown';
+export type RouteKind = 'chat' | 'text_completion' | 'embedding';
+export type RouteStrategy = 'priority_failover' | 'weighted_round_robin' | 'least_concurrency' | 'lowest_cost';
+
+export interface ProviderInfo {
+  id: string;
+  type: ProviderType;
+  name: string;
+  slug: string;
+  baseUrl: string;
+  enabled: boolean;
+  priority: number;
+  routingWeight: number;
+  healthStatus: ProviderHealthStatus;
+  healthMessage: string | null;
+  billingMode: BillingMode;
+  lastHealthCheckAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+  credentialCount?: number;
+  modelCount?: number;
+}
+
+export interface ModelRouteInfo {
+  id: string;
+  publicModelId: string;
+  displayName: string | null;
+  description: string | null;
+  routeKind: RouteKind;
+  strategy: RouteStrategy;
+  enabled: boolean;
+  isPublic: boolean;
+  targets: ModelRouteTargetInfo[];
+}
+
+export interface ModelRouteTargetInfo {
+  id: string;
+  routeId: string;
+  providerId: string;
+  providerModelId: string;
+  priority: number;
+  weight: number;
+  enabled: boolean;
+  providerName: string;
+  providerType: string;
+  upstreamModelId: string;
+  supportsTools: boolean;
+  supportsVision: boolean;
 }

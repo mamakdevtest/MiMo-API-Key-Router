@@ -8,6 +8,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 dotenv.config({ path: path.resolve(__dirname, '../../.env') });
 
 const envSchema = z.object({
+  APP_NAME: z.string().default('AI Provider Router'),
   NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
   HOST: z.string().default('0.0.0.0'),
   PORT: z.string().default('4000').transform(Number),
@@ -37,6 +38,7 @@ if (!parsed.success) {
 const raw = parsed.data;
 
 export const config = {
+  appName: raw.APP_NAME,
   nodeEnv: raw.NODE_ENV,
   host: raw.HOST,
   port: raw.PORT,

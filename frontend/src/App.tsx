@@ -5,6 +5,9 @@ import { useAuth } from './hooks/useAuth';
 import { Login } from './pages/Login';
 import { Layout } from './components/Layout';
 import { Dashboard } from './pages/Dashboard';
+import { Providers } from './pages/Providers';
+import { ModelCatalog } from './pages/ModelCatalog';
+import { Routes as RoutesPage } from './pages/Routes';
 import { Keys } from './pages/Keys';
 import { Settings } from './pages/Settings';
 import { Docs } from './pages/Docs';
@@ -30,6 +33,8 @@ function App() {
           queryClient.invalidateQueries({ queryKey: ['usage'] });
           queryClient.invalidateQueries({ queryKey: ['logs'] });
           queryClient.invalidateQueries({ queryKey: ['keys'] });
+          queryClient.invalidateQueries({ queryKey: ['providers'] });
+          queryClient.invalidateQueries({ queryKey: ['model-routes'] });
         }
       } catch (err) {}
     };
@@ -80,10 +85,13 @@ function App() {
       <Layout>
         <Routes>
           <Route path="/" element={<Dashboard />} />
+          <Route path="/providers" element={<Providers />} />
+          <Route path="/model-catalog" element={<ModelCatalog />} />
+          <Route path="/routes" element={<RoutesPage />} />
           <Route path="/keys" element={<Keys />} />
           <Route path="/temp-keys" element={<TempKeys />} />
+          <Route path="/requests" element={<Logs />} />
           <Route path="/settings" element={<Settings />} />
-          <Route path="/logs" element={<Logs />} />
           <Route path="/docs" element={<Docs />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
