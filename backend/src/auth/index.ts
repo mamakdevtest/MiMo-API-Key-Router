@@ -107,7 +107,7 @@ export async function registerAuth(app: FastifyInstance, db: Db) {
   app.decorateRequest('adminSession', undefined);
 
   app.addHook('onRequest', async (request, reply) => {
-    const publicPaths = ['/health', '/v1/models', '/v1/chat/completions', '/v1/messages'];
+    const publicPaths = ['/v1/models', '/v1/chat/completions', '/v1/completions', '/v1/embeddings', '/v1/tokenize', '/v1/messages'];
     if (!publicPaths.some((p) => request.url === p || request.url.startsWith(p + '?'))) {
       return;
     }

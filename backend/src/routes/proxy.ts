@@ -765,31 +765,8 @@ async function proxyRequest(
 }
 
 export async function registerProxyRoutes(app: FastifyInstance, db: Db) {
-  app.get('/health', async (_request, reply) => {
-    return reply.send({ status: 'ok' });
-  });
-
-  app.get('/v1/models', async (request, reply) => {
-    const setting = await db.query.settings.findFirst();
-    const publicIds = new Set((setting?.publicModelIds || 'mimo-v2.5,mimo-v2.5-pro').split(',').map((s) => s.trim()));
-    const models = ALL_MODELS.filter((m) => publicIds.has(m.id)).map((m) => ({
-      id: m.id,
-      object: 'model',
-      created: Math.floor(Date.now() / 1000),
-      owned_by: 'mimo',
-    }));
-    return reply.send({ object: 'list', data: models });
-  });
-
-  app.post('/v1/chat/completions', { config: { rateLimit: false } }, async (request, reply) => {
-    const body = request.body as { stream?: boolean } | undefined;
-    const isStreaming = body?.stream === true;
-    return proxyRequest(app, request, reply, db, config.mimoOpenAIBaseUrl, '/chat/completions', buildUpstreamHeaders, isStreaming);
-  });
-
-  app.post('/v1/messages', { config: { rateLimit: false } }, async (request, reply) => {
-    const body = request.body as { stream?: boolean } | undefined;
-    const isStreaming = body?.stream === true;
-    return proxyRequest(app, request, reply, db, config.mimoAnthropicBaseUrl, '/v1/messages', buildAnthropicHeaders, isStreaming);
-  });
+  // Legacy proxy routes are now handled by gateway.ts (multi-provider).
+  // This function is kept for backward compatibility but registers nothing
+  // to avoid duplicate route errors with the new gateway.
+  // The proxyRequest function is still exported for potential direct use.
 }
