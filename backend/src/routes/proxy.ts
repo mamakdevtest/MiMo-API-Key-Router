@@ -165,7 +165,7 @@ function buildAnthropicHeaders(request: FastifyRequest, upstreamKey: string): Re
 }
 
 // ── Main Proxy Handler ──────────────────────────────────────
-async function proxyRequest(
+export async function proxyRequest(
   app: FastifyInstance,
   request: FastifyRequest,
   reply: FastifyReply,
