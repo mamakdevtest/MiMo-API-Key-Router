@@ -1,89 +1,55 @@
-# 01 - First Time Setup
+# First-time setup
 
-This guide walks you through running MiMo API Key Router for the first time on your local machine.
+## Requirements
 
-## Prerequisites
+- Node.js 20 or later
+- npm
+- Docker is optional for production deployment
 
-- Node.js 20+ installed
-- npm installed
-- (Optional) Docker and Docker Compose
-
-## 1. Install Dependencies
+## Local development
 
 ```bash
 npm install
-```
-
-## 2. Create Environment File
-
-Copy the example file:
-
-```bash
 cp .env.example .env
 ```
 
-Edit `.env` and set the required value:
+Set these values in `.env` before the first start:
 
-```text
-INITIAL_ADMIN_PASSWORD=your-strong-admin-password
-```
+- `INITIAL_ADMIN_PASSWORD`
+- `GATEWAY_KEY`
+- `APP_ENCRYPTION_KEY` (32+ characters)
+- `SESSION_SECRET` (32+ characters)
 
-> **Note:** `APP_ENCRYPTION_KEY` and `SESSION_SECRET` are optional and will automatically fall back to secure default values if not specified.
-
-## 3. Run Database Migrations
+On npm 12+, approve the repository's native build scripts if npm reports blocked scripts:
 
 ```bash
-npm run db:migrate
+npm install-scripts approve --all
+npm rebuild
 ```
 
-This creates the SQLite database file.
-
-## 4. Start the Server
-
-### Development mode (recommended for local use)
+Start both services:
 
 ```bash
 npm run dev
 ```
 
-This starts:
+The API is `http://localhost:4000`; the development dashboard is `http://localhost:4173`. Migrations run automatically at startup, so no separate migration command is necessary for normal setup. Keep the local `DATABASE_URL` as `file:./data/mimo-router.sqlite`; `/data` is the Docker-only persistent volume path.
 
-- Backend at `http://localhost:4000`
-- Frontend dev server at `http://http://localhost:4173`
+## Configure providers
 
-### Production mode
+1. Sign in to the dashboard.
+2. Add a provider, including its type, name, unique slug, and base URL.
+3. Add credentials under that provider and test one.
+4. Synchronize the provider's models.
+5. Copy a public model ID from the model catalog and use it in a client.
+
+The public ID contains the provider slug, for example `mimo-main/mimo-v2.5-pro`.
+
+## Production
 
 ```bash
 npm run build
 npm start
 ```
 
-The production server runs on `http://localhost:4000` (or whatever `PORT` you set).
-
-## 5. Get Your Gateway API Key
-
-On first startup, the gateway API key is printed in the terminal logs:
-
-```text
-========================================
-Gateway API Key (save this securely):
-mimo_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
-========================================
-```
-
-Copy this value immediately. It is shown only once.
-
-## 6. Log in to the Admin Dashboard
-
-Open the frontend URL in your browser:
-
-```text
-http://localhost:4173
-```
-
-Enter the `INITIAL_ADMIN_PASSWORD` you set in `.env`.
-
-## Next Steps
-
-- [Add MiMo API keys](./managing-keys.md)
-- [Configure Claude Code or Open WebUI](./client-configuration.md)
+For containers, persist `/data` and use `NODE_ENV=production`, `TRUST_PROXY=true`, and `COOKIE_SECURE=true` only when HTTPS is terminated by a trusted reverse proxy.

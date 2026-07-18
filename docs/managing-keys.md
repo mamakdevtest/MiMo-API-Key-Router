@@ -1,47 +1,26 @@
-# 03 - Managing Provider API Keys
+# Providers and credentials
 
-The router no longer uses one global upstream key pool. Each provider owns its own real API keys, and the router selects only from that provider's pool when a prefixed public model ID points there.
+Each provider has its own credential pool. A request for `provider-slug/model-id` can only use credentials assigned to `provider-slug`.
 
-## Adding Provider Keys
+## Supported provider types
 
-1. Go to **Providers** in the dashboard.
-2. Create or open a provider such as MiMo or Featherless.
-3. Click **Add Key** or **Bulk Import**.
-4. Fill in the form:
-   - **Label** — a friendly name, e.g. `Main Key` or `Backup 1`
-   - **Provider API Key** — the real upstream `sk-...` key for that provider
-   - **Priority** — `0` is highest; lower numbers are tried first
-5. Click **Save provider key**.
+- `mimo`
+- `featherless`
+- `orcarouter`
+- `openai_compatible`
 
-> The real key is shown only during entry. After saving, only a masked version is displayed.
+For a custom OpenAI-compatible provider, configure the base URL and optional authentication header, prefix, endpoint paths, custom headers, and timeout in the provider form. URLs are validated to reduce SSRF risk. Set `ALLOW_PRIVATE_PROVIDER_URLS=true` only for intentionally private upstream services.
 
-## Testing and Syncing
+## Credentials
 
-From the provider details page you can:
+Use **Providers → credentials** to add one key or bulk import keys. Credentials are encrypted at rest and later displayed only in masked form. Priority `0` is tried before higher values.
 
-- **Test** — validates the currently selected provider credential against the upstream API
-- **Sync Models** — pulls the provider's model list into the local model catalog
+| State | Routing behaviour |
+|---|---|
+| `active` | Eligible for requests |
+| `cooldown` | Temporarily skipped until the cooldown expires |
+| `exhausted` | Skipped until manually reset |
+| `invalid` | Skipped until manually reset or replaced |
+| `disabled` | Skipped until enabled |
 
-## Key States
-
-| State | Meaning |
-|-------|---------|
-| `active` | Key is available for use |
-| `cooldown` | Key failed temporarily and will retry after the cooldown period |
-| `exhausted` | Key returned 402 (payment required); removed from rotation until manually reset |
-| `disabled` | Key was manually disabled |
-| `invalid` | Key returned 401 (unauthorized); removed from rotation until manually reset |
-
-## How Routing Uses These Keys
-
-- A client sends a request with a router key.
-- The request references a prefixed public model ID, such as `mimo-main/mimo-v2.5-pro`.
-- The router resolves that model to the owning provider.
-- Only that provider's credentials are considered for routing and failover.
-
-## Best Practices
-
-- Keep at least one backup key per provider.
-- Use clear provider-specific labels.
-- Run **Test** after adding new keys.
-- Run **Sync Models** after changing provider accounts or permissions.
+Test a credential after creating it, then synchronize models. The model catalog, not a hard-coded list, determines the current public model IDs.

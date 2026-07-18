@@ -1,96 +1,40 @@
-# 04 - Client Configuration
+# Client configuration
 
-This guide shows how to connect popular AI clients to MiMo API Key Router.
+Use the router key (`GATEWAY_KEY` or an active temporary router key), never an upstream provider credential. Find valid model IDs from `GET /v1/models`.
 
-You need your **gateway API key** (printed on first server startup) and your router URL.
+## OpenAI-compatible clients
 
-## Router URLs
+```text
+Base URL: https://router.example.com/v1
+API key: YOUR_GATEWAY_KEY
+Model: provider-slug/upstream-model-id
+```
 
-| Environment | Base URL |
-|-------------|----------|
-| Local dev | `http://localhost:4000` |
-| Production | `https://api.ai.emirhanmamak.com` |
+```bash
+curl https://router.example.com/v1/chat/completions \
+  -H 'Authorization: Bearer YOUR_GATEWAY_KEY' \
+  -H 'Content-Type: application/json' \
+  -d '{"model":"provider-slug/upstream-model-id","messages":[{"role":"user","content":"Hello"}]}'
+```
+
+## Anthropic-compatible clients
+
+```text
+Base URL: https://router.example.com
+API key: YOUR_GATEWAY_KEY
+Model: provider-slug/upstream-model-id
+```
+
+The router accepts `POST /v1/messages` and translates the request for the selected upstream provider where supported.
 
 ## Claude Code
 
-Set these environment variables before running Claude Code:
+Set the endpoint, token, and a public model ID in the environment used to start Claude Code:
 
 ```bash
-export ANTHROPIC_BASE_URL=https://api.ai.emirhanmamak.com
-export ANTHROPIC_AUTH_TOKEN=mimo_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
-export ANTHROPIC_MODEL=mimo-v2.5-pro
-export ANTHROPIC_DEFAULT_SONNET_MODEL=mimo-v2.5-pro
-export ANTHROPIC_DEFAULT_OPUS_MODEL=mimo-v2.5-pro
-export ANTHROPIC_DEFAULT_HAIKU_MODEL=mimo-v2.5
+export ANTHROPIC_BASE_URL=https://router.example.com
+export ANTHROPIC_AUTH_TOKEN=YOUR_GATEWAY_KEY
+export ANTHROPIC_MODEL=provider-slug/upstream-model-id
 ```
 
-Then start Claude Code normally.
-
-## Open WebUI
-
-1. Open Open WebUI settings.
-2. Add a new OpenAI API connection.
-3. Use these values:
-
-```text
-OpenAI Base URL: https://api.ai.emirhanmamak.com/v1
-API Key: mimo_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
-```
-
-4. Save and refresh the model list.
-5. Select `mimo-v2.5` or `mimo-v2.5-pro`.
-
-## Generic OpenAI Client
-
-```text
-Base URL: https://api.ai.emirhanmamak.com/v1
-API Key: mimo_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
-```
-
-Supported endpoints:
-
-- `GET /v1/models`
-- `POST /v1/chat/completions` (streaming and non-streaming)
-
-Example request:
-
-```bash
-curl https://api.ai.emirhanmamak.com/v1/chat/completions \
-  -H "Authorization: Bearer mimo_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "model": "mimo-v2.5-pro",
-    "messages": [{"role": "user", "content": "Hello"}]
-  }'
-```
-
-## Generic Anthropic Client
-
-```text
-Base URL: https://api.ai.emirhanmamak.com
-API Key: mimo_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
-```
-
-Supported endpoints:
-
-- `GET /v1/models`
-- `POST /v1/messages` (streaming and non-streaming)
-
-Example request:
-
-```bash
-curl https://api.ai.emirhanmamak.com/v1/messages \
-  -H "Authorization: Bearer mimo_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx" \
-  -H "Content-Type: application/json" \
-  -H "anthropic-version: 2023-06-01" \
-  -d '{
-    "model": "mimo-v2.5-pro",
-    "max_tokens": 1024,
-    "messages": [{"role": "user", "content": "Hello"}]
-  }'
-```
-
-## Notes
-
-- Only the two chat models (`mimo-v2.5`, `mimo-v2.5-pro`) are visible in `/v1/models` by default.
-- Audio models can still be used by sending the exact MiMo model ID in the request body.
+The exact model names depend on your synchronized catalog. Do not use old unprefixed model IDs.

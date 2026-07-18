@@ -1,52 +1,22 @@
-# 08 - Backup and Restore
+# Backup and restore
 
-All application data is stored in a single SQLite file. Backing up and restoring is straightforward.
+The persistent state is the SQLite database selected by `DATABASE_URL`. In the container configuration it is `/data/mimo-router.sqlite`.
 
-## Finding the Database File
+## Back up
 
-| Environment | Path |
-|-------------|------|
-| Local dev | `./mimo-router.sqlite` (or whatever `DATABASE_URL` points to) |
-| Docker | `/data/mimo-router.sqlite` inside the container |
-
-## Backup
-
-### Local
+Stop writes or take a SQLite-consistent backup before copying the file. Keep the database backup together with the matching `APP_ENCRYPTION_KEY` in a secure secret store.
 
 ```bash
-cp mimo-router.sqlite mimo-router-backup-$(date +%Y%m%d).sqlite
+docker cp mimo-api-key-router:/data/mimo-router.sqlite ./router-backup.sqlite
 ```
 
-### Docker
-
-```bash
-docker cp mimo-api-key-router:/data/mimo-router.sqlite ./mimo-router-backup-$(date +%Y%m%d).sqlite
-```
+For a local database, copy the path from `DATABASE_URL` after stopping the server.
 
 ## Restore
 
-1. Stop the running server or container.
-2. Replace the database file.
-3. Restart.
+1. Stop the service.
+2. Replace the database file with the backup.
+3. Restore the original `APP_ENCRYPTION_KEY` and necessary runtime secrets.
+4. Start the service and verify `/health`, dashboard login, and a provider credential test.
 
-### Local
-
-```bash
-# Stop the server first
-cp mimo-router-backup-20250707.sqlite mimo-router.sqlite
-npm run dev
-```
-
-### Docker
-
-```bash
-# Stop the container first
-docker cp mimo-router-backup-20250707.sqlite mimo-api-key-router:/data/mimo-router.sqlite
-docker compose up -d
-```
-
-## Important Notes
-
-- The encryption key (`APP_ENCRYPTION_KEY`) is not stored in the database. You must keep it safe separately.
-- If you lose the encryption key, you cannot decrypt the stored MiMo API keys.
-- Always back up both the database file and the `.env` file together.
+If the encryption key is lost, encrypted provider credentials in the database cannot be recovered.

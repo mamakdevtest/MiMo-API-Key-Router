@@ -1,61 +1,33 @@
-# 07 - Coolify Deployment
+# Coolify deployment
 
-This guide explains how to deploy MiMo API Key Router on Coolify.
+Deploy the repository as a Dockerfile application or Docker Compose resource. Attach a persistent volume at `/data`; it contains the SQLite database.
 
-## 1. Push Code to GitHub
+## Required environment
 
-Make sure your repository is on GitHub and accessible by Coolify.
-
-## 2. Create a New Resource in Coolify
-
-1. Open your Coolify dashboard.
-2. Click **New Resource**.
-3. Choose **Docker Compose** or **Dockerfile** deployment.
-4. Select your repository and the `main` branch.
-
-## 3. Set the Domain
-
-In the resource settings, set:
+Set these values in Coolify secrets/environment settings:
 
 ```text
-Domain: api.ai.emirhanmamak.com
-```
-
-Enable HTTPS so Coolify can issue a Let's Encrypt certificate.
-
-## 4. Add Environment Variables
-
-Add the following variables in Coolify:
-
-```text
-INITIAL_ADMIN_PASSWORD=your-strong-admin-password
 NODE_ENV=production
+HOST=0.0.0.0
 PORT=4000
 DATABASE_URL=file:/data/mimo-router.sqlite
+INITIAL_ADMIN_PASSWORD=strong-first-setup-password
+GATEWAY_KEY=long-random-client-key
+APP_ENCRYPTION_KEY=random-32-plus-character-secret
+SESSION_SECRET=random-32-plus-character-secret
 TRUST_PROXY=true
 COOKIE_SECURE=true
+LOG_LEVEL=info
 ```
 
-## 5. Configure Persistent Storage
+`INITIAL_ADMIN_PASSWORD` is required only while the database is first initialised. Keep the other secret values stable. In particular, changing `APP_ENCRYPTION_KEY` makes existing provider credentials unreadable.
 
-Mount a persistent volume to `/data` inside the container. This keeps the SQLite database across redeploys.
+## Deploy and verify
 
-## 6. Deploy
+1. Configure the application domain and enable HTTPS.
+2. Mount persistent storage at `/data`.
+3. Deploy and inspect the logs for a successful migration and listener on port `4000`.
+4. Request `https://your-domain/health`; it returns `{"status":"ok","app":"AI Provider Router"}`.
+5. Sign in, create a provider, add a credential, and synchronize models.
 
-Click **Deploy**. Coolify will build the Docker image and start the container.
-
-## 7. Create API Keys
-
-Open the domain in your browser and log in using `INITIAL_ADMIN_PASSWORD`. Then, go to **Gateway Credentials** to create and manage your API keys, or pre-configure a static key via the `GATEWAY_KEY` environment variable.
-
-## 8. Verify
-
-Visit `https://api.ai.emirhanmamak.com/health`. You should see:
-
-```json
-{ "status": "ok" }
-```
-
-## Updating
-
-Push changes to GitHub and redeploy from Coolify. The `/data` volume will persist your database.
+Do not expose the container port directly to the public internet when Coolify's HTTPS proxy is available.

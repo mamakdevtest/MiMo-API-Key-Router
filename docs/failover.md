@@ -1,42 +1,18 @@
-# 05 - Failover and Key States
+# Routing and failover
 
-MiMo API Key Router routes every request to the highest-priority available MiMo key. If that key fails, it tries the next one.
+The client selects a public model ID. The router resolves its provider prefix, chooses an eligible credential from that provider's pool, and sends the request through the provider adapter.
 
-## Selection Order
+## Credential selection
 
-1. Start from the key with the lowest `priority` number (0 is highest).
-2. Skip keys that are `exhausted`, `invalid`, `disabled`, or in `cooldown`.
-3. Use the first available key.
+Eligible credentials are selected by ascending priority. Credentials that are disabled, exhausted, invalid, or still cooling down are skipped.
 
-## What Happens When a Key Fails?
+| Upstream outcome | Credential action |
+|---|---|
+| `401` | Mark invalid |
+| `402` | Mark exhausted |
+| `403` | Mark disabled |
+| `429`, timeout, network error, or `5xx` | Put into cooldown and try another eligible credential |
 
-| Upstream Response | Router Action |
-|-------------------|---------------|
-| 402 Payment Required | Mark key `exhausted`; remove from rotation until manual reset |
-| 429 Too Many Requests | Mark key `cooldown` for configured seconds; try next key |
-| 401 Unauthorized | Mark key `invalid`; remove from rotation until manual reset |
-| 403 Forbidden | Mark key `disabled`; remove from rotation until manual reset |
-| 5xx Server Error | Mark key `cooldown` temporarily; try next key |
-| Network Error / Timeout | Mark key `cooldown` temporarily; try next key |
+Cooldown durations and request timeout are configured in the dashboard settings. When all eligible credentials or provider targets fail, the client receives an upstream failure response.
 
-## Cooldown Behavior
-
-When a key enters `cooldown`, it is skipped for the configured duration. After the cooldown expires, the key automatically returns to `active` status at its original priority.
-
-Default cooldown durations:
-
-- 429 cooldown: 60 seconds
-- 5xx cooldown: 60 seconds
-- Timeout cooldown: 60 seconds
-
-You can change these in **Settings**.
-
-## Streaming Safety
-
-Once a streaming response has started sending bytes to the client, the router **will not** fall back to another key. This prevents duplicate tool executions and inconsistent agent behavior in Claude Code.
-
-Fallback only happens before the upstream response begins.
-
-## No Round-Robin
-
-The router does **not** distribute requests evenly. It always tries the highest-priority working key first. This gives you predictable behavior and full control over which key is primary.
+For streamed responses, the router does not retry after response bytes have been forwarded. This avoids duplicate completions and tool calls.

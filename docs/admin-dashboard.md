@@ -1,52 +1,23 @@
-# 02 - Admin Dashboard Guide
+# Admin dashboard
 
-The admin dashboard is where you manage provider API keys, monitor router health, sync provider models, and control the client-facing router keys.
+The dashboard manages upstream providers, their encrypted credentials, and client-facing router keys. Sign in using the password supplied by `INITIAL_ADMIN_PASSWORD` when the database was first created.
 
-## Logging In
+## Main areas
 
-1. Open the dashboard URL:
-   - Development: `http://localhost:4173`
-   - Production: your configured domain, e.g. `https://api.ai.emirhanmamak.com`
-2. Enter your admin password.
-3. Click **Login**.
+| Area | Use |
+|---|---|
+| Overview | Gateway health, credential states, request volume, and recent success rate |
+| Providers | Create, edit, test, enable, disable, and inspect providers |
+| Model catalog | View synchronized models and their public IDs |
+| Router keys | Rotate the main key and manage temporary client keys |
+| Settings | Change the admin password, cooldowns, timeouts, and IP allowlist |
 
-## Dashboard Overview
+## Provider workflow
 
-After logging in, you see several cards:
+Create a provider first, then add its credentials. Test a credential and synchronize models before clients use it. The router never returns a provider secret to the browser after it has been saved.
 
-| Card | Meaning |
-|------|---------|
-| Gateway Status | `healthy` if at least one provider credential is active; `degraded` otherwise |
-| Total Keys | Number of provider credentials stored across all providers |
-| Active Keys | Credentials currently available for routing |
-| Cooldown Keys | Credentials temporarily paused due to errors |
-| Exhausted Keys | Credentials that returned 402 (out of credits) |
-| Requests (24h) | Total requests in the last 24 hours |
-| Success Rate | Percentage of successful requests |
+Provider slugs are lowercase letters, digits, and hyphens. They form the first segment of every public model ID.
 
-## Navigation
+## Sessions
 
-The top bar has these main sections:
-
-- **Overview** — router health and request analytics
-- **Providers** — add MiMo or Featherless providers, manage provider-owned keys, test them, and sync models
-- **Model Catalog** — read-only list of synced provider models and their prefixed public IDs
-- **Router Keys** — rotate the main router key and open temporary router key management
-- **Settings** — cooldowns, timeouts, IP allowlist, router key rotation, password change
-
-## Routing Model
-
-- Clients use only the router key or temporary router keys.
-- Real upstream provider keys stay inside the provider records.
-- Public model IDs are prefixed with the provider slug, such as `mimo-main/mimo-v2.5-pro`.
-- The router reads the model prefix, finds the owning provider, and forwards the request with that provider's own key pool.
-
-## Logging Out
-
-Click the **Logout** button in the top-right corner.
-
-## Security Notes
-
-- The dashboard is protected by a password stored as an Argon2id hash.
-- Sessions use secure, HttpOnly cookies.
-- All mutating requests require a valid CSRF token.
+Admin sessions use HTTP-only cookies. State-changing dashboard calls require a CSRF token. If a request is rejected after a deployment or domain change, sign out, clear site cookies, and sign in again.

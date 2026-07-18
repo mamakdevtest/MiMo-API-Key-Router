@@ -1,92 +1,42 @@
-# 09 - Troubleshooting
+# Troubleshooting
 
-This guide helps you resolve common issues.
+## `Could not locate the bindings file` for `better-sqlite3`
 
-## Backend fails to start with "Invalid environment variables"
+Your native module was not built for the current Node version. Rebuild after approving native scripts (npm 12+):
 
-**Cause:** Required environment variables are missing or too short.
+```bash
+npm install-scripts approve --all
+npm rebuild better-sqlite3 argon2
+```
 
-**Fix:**
+Use a supported Node version (the project supports Node 20+; current `better-sqlite3` supports Node 20–26).
 
-1. Make sure `.env` exists in the project root.
-2. Set `INITIAL_ADMIN_PASSWORD` on first boot.
-3. Restart the server.
+## `INITIAL_ADMIN_PASSWORD is required for first setup`
 
-## Backend fails to start with "SQLITE_CANTOPEN: unable to open database file"
+The configured database has no settings row. Set `INITIAL_ADMIN_PASSWORD`, restart once, then remove it from the environment if desired. Do not point a production deployment at an empty or unintended database path.
 
-**Cause:** The application runs as a non-root user `router` (UID `1001`) inside Docker, but the mounted persistent volume folder is owned by `root`.
+## `EACCES: permission denied, mkdir '/data'`
 
-**Fix:**
+`/data` is the Docker container's persistent-volume path, not a local development directory. For `npm run dev`, set this in `.env`:
 
-1. Run this command on your host server to change the permissions:
-   ```bash
-   sudo chown -R 1001:1001 /data/coolify/applications/<app-uuid>/storage/data
-   ```
-2. Alternatively, edit the `Dockerfile` and comment out the `USER router` line to run the container as `root`.
-3. Restart the container.
+```text
+DATABASE_URL=file:./data/mimo-router.sqlite
+```
 
-## "Unable to reach server" or HTML response error
+Restart the backend. The router creates `./data` in the repository automatically. Keep `file:/data/mimo-router.sqlite` only for Docker/Coolify, where `/data` is mounted and writable by the container user.
 
-**Cause:** The frontend cannot reach the backend.
+## Vite proxy reports `ECONNREFUSED` for `/admin/me`
 
-**Fix:**
+The frontend is running but the backend is not. Start it with `npm run dev:backend`, then resolve the backend startup error shown in its output. The development proxy targets port `4000`.
 
-1. Make sure the backend is running:
-   ```bash
-   npm run dev:backend
-   ```
-2. Check that the frontend proxy in `frontend/vite.config.ts` points to the correct backend port.
-3. Check browser console and backend logs for errors.
+## Model not found
 
-## 403 Forbidden when adding or editing keys
+Create and enable the provider, add an active credential, sync its models, and use the exact provider-prefixed ID returned by `/v1/models`.
 
-**Cause:** CSRF token mismatch.
+## Provider cannot be saved or tested
 
-**Fix:**
+Check the base URL, authentication configuration, and provider credential. Private network endpoints are rejected unless `ALLOW_PRIVATE_PROVIDER_URLS=true`.
 
-1. Log out and log in again.
-2. Clear browser cookies for the site.
-3. Make sure your browser is not blocking cookies.
+## Docker cannot open the database
 
-## Gateway key is rejected
-
-**Cause:** The gateway key was rotated or typed incorrectly.
-
-**Fix:**
-
-1. Check the server logs for the current gateway key (only shown on first boot).
-2. If you rotated the key, use the new one from the dashboard.
-3. If you lost the key, rotate it again from **Settings → Gateway API Key**.
-
-## All requests return 503
-
-**Cause:** No available MiMo keys.
-
-**Fix:**
-
-1. Open the dashboard and check key states.
-2. Reset or enable keys that are `exhausted`, `invalid`, or `disabled`.
-3. Add new MiMo keys if needed.
-
-## Key marked exhausted after working before
-
-**Cause:** The MiMo key ran out of credits.
-
-**Fix:**
-
-1. Add a new MiMo key or recharge the existing one.
-2. Reset the key state from the dashboard.
-
-## IP allowlist blocks legitimate requests
-
-**Cause:** The allowlist is active and the client IP is not allowed.
-
-**Fix:**
-
-1. Go to **Settings → IP Allowlist**.
-2. Add the client IP or CIDR range.
-3. If you are behind a reverse proxy, make sure `TRUST_PROXY=true` is set.
-
-## Still stuck?
-
-Check the backend logs for detailed error messages. Only metadata is logged; sensitive values like keys and passwords are never written to logs.
+Confirm `/data` is persistent and writable by the container user. Do not replace the persistent volume during a redeploy.
