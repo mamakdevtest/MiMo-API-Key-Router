@@ -3,8 +3,8 @@
  * Maps a public prefixed model ID to the provider model that owns it.
  */
 
-import { eq, asc } from 'drizzle-orm';
-import { providers, providerModels } from '../db/schema.js';
+import { and, eq, asc } from 'drizzle-orm';
+import { modelRoutes, modelRouteTargets, providers, providerModels } from '../db/schema.js';
 import type { Db } from '../db/index.js';
 import type { IngressProtocol, RouteKind } from '../providers/types.js';
 import { buildPublicModelId, splitPublicModelId } from '../providers/public-model-id.js';
@@ -42,6 +42,9 @@ export class RouteResolver {
     modelId: string,
     _ingressProtocol?: IngressProtocol,
   ): Promise<ResolvedRoute | null> {
+    const configuredRoute = await this.resolveConfiguredRoute(modelId);
+    if (configuredRoute) return configuredRoute;
+
     const prefixed = splitPublicModelId(modelId);
 
     const rows = await this.db
@@ -107,7 +110,73 @@ export class RouteResolver {
     };
   }
 
+  private async resolveConfiguredRoute(modelId: string): Promise<ResolvedRoute | null> {
+    const route = await this.db.query.modelRoutes.findFirst({
+      where: and(eq(modelRoutes.publicModelId, modelId), eq(modelRoutes.enabled, true)),
+    });
+    if (!route) return null;
+
+    const rows = await this.db
+      .select({
+        targetId: modelRouteTargets.id,
+        providerId: providers.id,
+        providerSlug: providers.slug,
+        providerType: providers.type,
+        providerModelId: providerModels.id,
+        upstreamModelId: providerModels.upstreamModelId,
+        priority: modelRouteTargets.priority,
+        weight: modelRouteTargets.weight,
+        timeoutMs: modelRouteTargets.timeoutOverrideMs,
+        maxAttempts: modelRouteTargets.maxAttemptsOverride,
+        supportsTools: providerModels.supportsTools,
+        supportsVision: providerModels.supportsVision,
+        supportsChat: providerModels.supportsChat,
+        supportsEmbeddings: providerModels.supportsEmbeddings,
+        enabled: modelRouteTargets.enabled,
+        providerEnabled: providers.enabled,
+        status: providerModels.status,
+      })
+      .from(modelRouteTargets)
+      .innerJoin(providers, eq(modelRouteTargets.providerId, providers.id))
+      .innerJoin(providerModels, eq(modelRouteTargets.providerModelId, providerModels.id))
+      .where(eq(modelRouteTargets.routeId, route.id))
+      .orderBy(asc(modelRouteTargets.priority), asc(modelRouteTargets.createdAt));
+
+    const targets = rows
+      .filter((row) => row.enabled && row.providerEnabled && row.status !== 'not_deployed' && row.status !== 'possibly_removed')
+      .map((row) => ({
+        routeId: route.id,
+        routeTargetId: row.targetId,
+        providerId: row.providerId,
+        providerSlug: row.providerSlug,
+        providerType: row.providerType,
+        providerModelId: row.providerModelId,
+        upstreamModelId: row.upstreamModelId,
+        priority: row.priority,
+        weight: row.weight,
+        timeoutMs: row.timeoutMs,
+        maxAttempts: row.maxAttempts,
+        supportsTools: !!row.supportsTools,
+        supportsVision: !!row.supportsVision,
+        supportsChat: !!row.supportsChat,
+        supportsEmbeddings: !!row.supportsEmbeddings,
+      }));
+
+    if (targets.length === 0) return null;
+    return {
+      routeId: route.id,
+      publicModelId: route.publicModelId,
+      routeKind: route.routeKind as RouteKind,
+      strategy: route.strategy,
+      targets,
+    };
+  }
+
   async getPublicRoutes(): Promise<Array<{ publicModelId: string; displayName: string | null }>> {
+    const configuredRoutes = await this.db.query.modelRoutes.findMany({
+      where: and(eq(modelRoutes.enabled, true), eq(modelRoutes.isPublic, true)),
+      orderBy: [asc(modelRoutes.publicModelId)],
+    });
     const rows = await this.db
       .select({
         providerSlug: providers.slug,
@@ -121,11 +190,21 @@ export class RouteResolver {
       .where(eq(providers.enabled, true))
       .orderBy(asc(providers.priority), asc(providerModels.upstreamModelId));
 
-    return rows
+    const providerRoutes = rows
       .filter((row) => row.providerEnabled && row.status !== 'not_deployed' && row.status !== 'possibly_removed')
       .map((row) => ({
         publicModelId: buildPublicModelId({ slug: row.providerSlug }, row.upstreamModelId),
         displayName: row.displayName,
       }));
+
+    const seen = new Set<string>();
+    return [
+      ...configuredRoutes.map((route) => ({ publicModelId: route.publicModelId, displayName: route.displayName })),
+      ...providerRoutes,
+    ].filter((route) => {
+      if (seen.has(route.publicModelId)) return false;
+      seen.add(route.publicModelId);
+      return true;
+    });
   }
 }

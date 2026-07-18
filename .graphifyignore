@@ -1,0 +1,14 @@
+# Never place local credentials, generated databases, or tool environments in
+# Graphify's knowledge graph.
+.claude/
+.env
+.env.*
+.graphify-venv/
+graphify-out/
+node_modules/
+data/
+*.sqlite
+*.sqlite3
+*.sqlite-journal
+*.sqlite-wal
+*.sqlite-shm

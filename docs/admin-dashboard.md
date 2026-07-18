@@ -6,9 +6,9 @@ The dashboard manages upstream providers, their encrypted credentials, and clien
 
 | Area | Use |
 |---|---|
-| Overview | Gateway health, credential states, request volume, and recent success rate |
+| Overview | Gateway health, credential states, request volume, recent success rate, and global model-health/retest counts |
 | Providers | Create, edit, test, enable, disable, and inspect providers |
-| Model catalog | View synchronized models and their public IDs |
+| Model catalog | View synchronized models, public IDs, latest benchmark details, health ordering, and mix-router targets |
 | Router keys | Rotate the main key and manage temporary client keys |
 | Settings | Change the admin password, cooldowns, timeouts, and IP allowlist |
 

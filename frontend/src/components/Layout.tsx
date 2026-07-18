@@ -1,5 +1,5 @@
 import { Link, useLocation } from 'react-router-dom';
-import { LayoutDashboard, KeyRound, Settings, LogOut, BookOpen, ScrollText, Server, Database } from 'lucide-react';
+import { LayoutDashboard, KeyRound, Settings, LogOut, BookOpen, ScrollText, Server, Database, Gauge } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useAuth } from '@/hooks/useAuth';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -12,6 +12,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
     { path: '/', label: 'Overview', icon: LayoutDashboard },
     { path: '/providers', label: 'Providers', icon: Server },
     { path: '/model-catalog', label: 'Model Catalog', icon: Database },
+    { path: '/model-benchmark', label: 'Benchmark', icon: Gauge },
     { path: '/keys', label: 'Router Keys', icon: KeyRound },
     { path: '/requests', label: 'Requests', icon: ScrollText },
     { path: '/settings', label: 'Settings', icon: Settings },

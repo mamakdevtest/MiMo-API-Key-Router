@@ -8,6 +8,7 @@ import { Dashboard } from './pages/Dashboard';
 import { Providers } from './pages/Providers';
 import { ProviderDetails } from './pages/ProviderDetails';
 import { ModelCatalog } from './pages/ModelCatalog';
+import { ModelBenchmark } from './pages/ModelBenchmark';
 import { Keys } from './pages/Keys';
 import { Settings } from './pages/Settings';
 import { Docs } from './pages/Docs';
@@ -88,6 +89,7 @@ function App() {
           <Route path="/providers" element={<Providers />} />
           <Route path="/providers/:id" element={<ProviderDetails />} />
           <Route path="/model-catalog" element={<ModelCatalog />} />
+          <Route path="/model-benchmark" element={<ModelBenchmark />} />
           <Route path="/keys" element={<Keys />} />
           <Route path="/temp-keys" element={<TempKeys />} />
           <Route path="/requests" element={<Logs />} />

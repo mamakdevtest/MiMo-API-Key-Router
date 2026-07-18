@@ -187,27 +187,42 @@ export class OpenAICompatibleAdapter implements ProviderAdapter {
     const list: any[] = Array.isArray(data) ? data : data.data ?? [];
     const caps = instanceCapabilities(context.provider);
 
-    const models = list.map((m: any) => ({
-      upstreamModelId: typeof m === 'string' ? m : m.id,
-      displayName: typeof m === 'string' ? m : m.name ?? m.id ?? null,
+    const allModels = list.map((m: any) => {
+      const upstreamModelId = typeof m === 'string' ? m : m.id;
+      const normalizedId = String(upstreamModelId ?? '').toLowerCase();
+      // OpenAI-compatible `/models` responses often omit capabilities. Avoid
+      // sending chat benchmark calls to clearly non-chat model families.
+      const supportsChat = !/(embedding|rerank|moderation|tts|speech|audio|whisper|image|dall-e|video|(^|[\/_-])wan[\/_-])/.test(normalizedId);
+
+      return {
+      upstreamModelId,
+      displayName: typeof m === 'string' ? m : m.name ?? upstreamModelId ?? null,
       modelClass: null,
       status: 'active',
       contextLength: typeof m === 'object' ? m.context_length ?? m.context_window ?? null : null,
       maxCompletionTokens: typeof m === 'object' ? m.max_completion_tokens ?? m.max_tokens ?? null : null,
       isGated: false,
       availableOnCurrentPlan: true,
-      // Conservative capability defaults; user can refine in the dashboard.
-      supportsChat: true,
+      // The endpoint usually omits capabilities; this safe heuristic can be
+      // refined through a provider-specific adapter in the future.
+      supportsChat,
       supportsTools: caps.supportsTools,
       supportsVision: caps.supportsVision,
       supportsEmbeddings: false,
-    }));
+    };
+    });
+
+    // Many OpenAI-compatible APIs return their entire catalog without paging.
+    // Paginate locally so ModelSyncService does not repeatedly process the same
+    // catalog until its safety limit is reached.
+    const start = (context.page - 1) * context.perPage;
+    const models = allModels.slice(start, start + context.perPage);
 
     return {
       models,
-      totalCount: models.length,
-      page: 1,
-      perPage: models.length || context.perPage,
+      totalCount: allModels.length,
+      page: context.page,
+      perPage: context.perPage,
     };
   }
 

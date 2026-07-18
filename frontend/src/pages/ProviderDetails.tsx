@@ -199,7 +199,7 @@ export function ProviderDetails() {
         </div>
       </div>
 
-      <div className="grid gap-4 md:grid-cols-3">
+      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         <Card>
           <CardHeader>
             <CardTitle>Provider Type</CardTitle>
@@ -225,6 +225,21 @@ export function ProviderDetails() {
           <CardContent className="space-y-2 text-sm text-muted-foreground">
             <p>Clients do not use these upstream keys directly.</p>
             <p>They call the router with the single global gateway key.</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader>
+            <CardTitle>Model Health</CardTitle>
+            <CardDescription>Last benchmark across synchronized models</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-2 text-sm">
+            <div className="flex flex-wrap gap-x-3 gap-y-1">
+              <span className="text-green-500">Ready {provider.modelHealth?.ready ?? 0}</span>
+              <span className="text-amber-500">Limited {provider.modelHealth?.rate_limited ?? 0}</span>
+              <span className="text-red-500">Failed {provider.modelHealth?.failed ?? 0}</span>
+            </div>
+            <p className="text-muted-foreground">{provider.modelHealth?.retestRecommended ?? 0} need a test (untested, stale, or failed).</p>
+            <Link to={`/model-catalog?providerId=${id}`} className="text-primary underline underline-offset-4">View model catalog</Link>
           </CardContent>
         </Card>
       </div>

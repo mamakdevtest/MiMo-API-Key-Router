@@ -91,6 +91,16 @@ export function classifyHttpError(
       };
 
     case 429: {
+      if (bodyLower.includes('free tier requests on this model are rate-limited')) {
+        return {
+          category: 'vercel_free_tier_model_rate_limited',
+          scope: 'credential',
+          retryable: true,
+          action: 'next_credential',
+          publicMessage: 'Vercel free-tier limit reached for this model; trying another key or model',
+          internalMessage: 'Vercel free-tier model rate limit',
+        };
+      }
       // Featherless concurrency limit vs rate limit
       if (bodyLower.includes('concurrency') || bodyLower.includes('concurrent')) {
         return {

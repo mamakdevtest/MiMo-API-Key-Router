@@ -16,7 +16,7 @@ function freshDb() {
   return { db, client };
 }
 
-describe('Migration 0004 (extended provider config)', () => {
+describe('Provider and model benchmark migrations', () => {
   it('applies cleanly and adds new provider columns', () => {
     const { client } = freshDb();
     const cols = (client.prepare(`PRAGMA table_info(providers)`).all() as Array<{ name: string }>).map((c) => c.name);
@@ -56,6 +56,7 @@ describe('Migration 0004 (extended provider config)', () => {
 
   it('accepts the new provider types', () => {
     const { client } = freshDb();
+    const initialCount = (client.prepare(`SELECT count(*) as c FROM providers`).get() as { c: number }).c;
     ['orcarouter', 'openai_compatible', 'mimo', 'featherless'].forEach((type, i) => {
       client
         .prepare(
@@ -66,6 +67,14 @@ describe('Migration 0004 (extended provider config)', () => {
     });
 
     const count = client.prepare(`SELECT count(*) as c FROM providers`).get() as { c: number };
-    expect(count.c).toBe(4);
+    expect(count.c).toBe(initialCount + 4);
+  });
+
+  it('adds one latest-result row per provider model', () => {
+    const { client } = freshDb();
+    const cols = (client.prepare(`PRAGMA table_info(model_benchmark_results)`).all() as Array<{ name: string }>).map((column) => column.name);
+    expect(cols).toEqual(expect.arrayContaining(['provider_model_id', 'outcome', 'latency_ms', 'http_status', 'error_message', 'tested_at']));
+    const indexes = client.prepare(`PRAGMA index_list(model_benchmark_results)`).all() as Array<{ name: string }>;
+    expect(indexes.map((index) => index.name)).toContain('model_benchmark_results_tested_at_idx');
   });
 });

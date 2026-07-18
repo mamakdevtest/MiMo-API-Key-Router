@@ -3,10 +3,11 @@ import { eq, asc, sql, count, gte, and } from 'drizzle-orm';
 import { z } from 'zod';
 import { config } from '../config.js';
 import { encrypt, maskKey, hashGatewayKey, generateSecureToken } from '../crypto/index.js';
-import { apiKeys, settings, requestLogs, gatewayCredentials, providerCredentials, providers, providerModels } from '../db/schema.js';
+import { apiKeys, settings, requestLogs, gatewayCredentials, providerCredentials, providers, providerModels, modelBenchmarkResults } from '../db/schema.js';
 import { streamManager } from '../services/stream-manager.js';
 import type { Db } from '../db/index.js';
 import { buildPublicModelId } from '../providers/public-model-id.js';
+import { compareModelHealth, getModelHealth, serializeBenchmark, summarizeModelHealth, type ModelBenchmarkSnapshot } from '../services/model-health.js';
 
 const createKeySchema = z.object({
   label: z.string().min(1).max(100),
@@ -48,6 +49,24 @@ function toKeyResponse(key: typeof apiKeys.$inferSelect) {
 }
 
 export async function registerAdminRoutes(app: FastifyInstance, db: Db) {
+  function snapshotFromRow(row: {
+    benchmarkProviderModelId: string | null;
+    benchmarkOutcome: ModelBenchmarkSnapshot['outcome'] | null;
+    benchmarkLatencyMs: number | null;
+    benchmarkHttpStatus: number | null;
+    benchmarkErrorMessage: string | null;
+    benchmarkTestedAt: Date | null;
+  }): ModelBenchmarkSnapshot | null {
+    if (!row.benchmarkProviderModelId || !row.benchmarkOutcome || !row.benchmarkTestedAt) return null;
+    return {
+      outcome: row.benchmarkOutcome,
+      latencyMs: row.benchmarkLatencyMs,
+      httpStatus: row.benchmarkHttpStatus,
+      errorMessage: row.benchmarkErrorMessage,
+      testedAt: row.benchmarkTestedAt,
+    };
+  }
+
   app.get('/admin/dashboard', async (_request, reply) => {
     const now = new Date();
     const dayAgo = new Date(now.getTime() - 24 * 60 * 60 * 1000);
@@ -73,6 +92,24 @@ export async function registerAdminRoutes(app: FastifyInstance, db: Db) {
     const success = requestStats?.success ?? 0;
     const successRate = total > 0 ? Math.round((success / total) * 100) : 100;
 
+    const modelRows = await db.select({
+      providerEnabled: providers.enabled,
+      modelStatus: providerModels.status,
+      benchmarkProviderModelId: modelBenchmarkResults.providerModelId,
+      benchmarkOutcome: modelBenchmarkResults.outcome,
+      benchmarkLatencyMs: modelBenchmarkResults.latencyMs,
+      benchmarkHttpStatus: modelBenchmarkResults.httpStatus,
+      benchmarkErrorMessage: modelBenchmarkResults.errorMessage,
+      benchmarkTestedAt: modelBenchmarkResults.testedAt,
+    }).from(providerModels)
+      .innerJoin(providers, eq(providerModels.providerId, providers.id))
+      .leftJoin(modelBenchmarkResults, eq(providerModels.id, modelBenchmarkResults.providerModelId));
+    const modelHealth = summarizeModelHealth(modelRows.map((row) => getModelHealth({
+      providerEnabled: row.providerEnabled,
+      modelStatus: row.modelStatus,
+      benchmark: snapshotFromRow(row),
+    }, now)));
+
     return reply.send({
       gatewayStatus: (credentialStats?.active ?? 0) > 0 ? 'healthy' : 'degraded',
       totalKeys: credentialStats?.total ?? 0,
@@ -81,6 +118,7 @@ export async function registerAdminRoutes(app: FastifyInstance, db: Db) {
       exhaustedKeys: credentialStats?.exhausted ?? 0,
       requestsLast24h: total,
       successRate,
+      modelHealth,
     });
   });
 
@@ -282,21 +320,41 @@ export async function registerAdminRoutes(app: FastifyInstance, db: Db) {
     const rows = await db
       .select({
         providerSlug: providers.slug,
+        providerPriority: providers.priority,
+        providerEnabled: providers.enabled,
         upstreamModelId: providerModels.upstreamModelId,
         displayName: providerModels.displayName,
         providerType: providers.type,
         status: providerModels.status,
+        benchmarkProviderModelId: modelBenchmarkResults.providerModelId,
+        benchmarkOutcome: modelBenchmarkResults.outcome,
+        benchmarkLatencyMs: modelBenchmarkResults.latencyMs,
+        benchmarkHttpStatus: modelBenchmarkResults.httpStatus,
+        benchmarkErrorMessage: modelBenchmarkResults.errorMessage,
+        benchmarkTestedAt: modelBenchmarkResults.testedAt,
       })
       .from(providerModels)
       .innerJoin(providers, eq(providerModels.providerId, providers.id))
+      .leftJoin(modelBenchmarkResults, eq(providerModels.id, modelBenchmarkResults.providerModelId))
       .where(and(eq(providers.enabled, true), eq(providerModels.status, 'active')))
-      .orderBy(asc(providers.priority), asc(providerModels.upstreamModelId));
+      ;
 
-    return reply.send(rows.map((row) => ({
+    const hydrated = rows.map((row) => {
+      const benchmark = snapshotFromRow(row);
+      return {
+        ...row,
+        benchmark,
+        health: getModelHealth({ providerEnabled: row.providerEnabled, modelStatus: row.status, benchmark }),
+      };
+    }).sort(compareModelHealth);
+
+    return reply.send(hydrated.map(({ benchmark, ...row }) => ({
       id: buildPublicModelId({ slug: row.providerSlug }, row.upstreamModelId),
       name: row.displayName || row.upstreamModelId,
       description: `${row.providerType} provider model`,
       public: true,
+      health: row.health,
+      benchmark: serializeBenchmark(benchmark),
     })));
   });
 

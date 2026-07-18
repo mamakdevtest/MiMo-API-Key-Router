@@ -326,6 +326,12 @@ export function Providers() {
                     <div className="text-muted-foreground">Billing</div>
                   </div>
                 </div>
+                <div className="flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted-foreground">
+                  <span className="text-green-400">Ready {p.modelHealth?.ready ?? 0}</span>
+                  <span className="text-amber-400">Limited {p.modelHealth?.rate_limited ?? 0}</span>
+                  <span>Untested/stale {(p.modelHealth?.untested ?? 0) + (p.modelHealth?.stale ?? 0)}</span>
+                  <span className="text-red-400">Failed {p.modelHealth?.failed ?? 0}</span>
+                </div>
                 <div className="flex gap-2">
                   <Button variant="outline" size="sm" className="flex-1" onClick={() => syncMutation.mutate(p.id)} disabled={syncMutation.isPending}>
                     <RefreshCw className={`w-3 h-3 mr-1 ${syncMutation.isPending ? 'animate-spin' : ''}`} />Sync

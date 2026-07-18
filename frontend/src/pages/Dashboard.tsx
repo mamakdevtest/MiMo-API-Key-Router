@@ -48,6 +48,8 @@ export function Dashboard() {
     { label: 'Total Requests', value: usage?.totals.requests ?? stats?.requestsLast24h ?? 0, icon: BarChart3, color: 'text-blue-500' },
     { label: 'Total Tokens', value: formatTokens(usage?.totals.tokens ?? 0), icon: Zap, color: 'text-purple-500' },
     { label: 'Estimated Cost', value: formatCost(usage?.totals.cost ?? 0), icon: Coins, color: 'text-green-500' },
+    { label: 'Ready Models', value: stats?.modelHealth.ready ?? 0, icon: CheckCircle2, color: 'text-green-500' },
+    { label: 'Retest Models', value: stats?.modelHealth.retestRecommended ?? 0, icon: AlertTriangle, color: 'text-yellow-500' },
   ];
 
   const modelData = (usage?.byModel || []).map((m) => ({
@@ -121,6 +123,28 @@ export function Dashboard() {
           );
         })}
       </div>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Model health</CardTitle>
+          <CardDescription>Latest benchmark result only. A result becomes stale after 24 hours; health is for visibility and catalog ordering, not routing.</CardDescription>
+        </CardHeader>
+        <CardContent className="grid grid-cols-2 gap-3 text-center sm:grid-cols-3 lg:grid-cols-6">
+          {[
+            ['Ready', stats?.modelHealth.ready ?? 0, 'text-green-500'],
+            ['Rate limited', stats?.modelHealth.rate_limited ?? 0, 'text-amber-500'],
+            ['Untested', stats?.modelHealth.untested ?? 0, 'text-slate-400'],
+            ['Stale', stats?.modelHealth.stale ?? 0, 'text-yellow-500'],
+            ['Failed', stats?.modelHealth.failed ?? 0, 'text-red-500'],
+            ['Inactive', stats?.modelHealth.inactive ?? 0, 'text-zinc-400'],
+          ].map(([label, value, color]) => (
+            <div key={label as string} className="rounded-lg bg-muted/30 p-3">
+              <div className={`text-2xl font-bold ${color}`}>{value}</div>
+              <div className="text-xs text-muted-foreground">{label}</div>
+            </div>
+          ))}
+        </CardContent>
+      </Card>
 
       {/* Charts Row */}
       <div className="grid gap-4 md:grid-cols-2">

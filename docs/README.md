@@ -9,6 +9,7 @@ The router provides a single authenticated API for multiple upstream AI provider
 - [Providers and credentials](./managing-keys.md)
 - [Client configuration](./client-configuration.md)
 - [Routing and failover](./failover.md)
+- [Model benchmark](./model-benchmark.md)
 - [Security](./security.md)
 - [Coolify deployment](./coolify-deployment.md)
 - [Backup and restore](./backup-restore.md)

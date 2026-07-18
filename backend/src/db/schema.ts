@@ -181,6 +181,16 @@ export const providerModels = sqliteTable('provider_models', {
   updatedAt: integer('updated_at', { mode: 'timestamp' }).notNull(),
 });
 
+/** The single most-recent diagnostic result for a synchronized provider model. */
+export const modelBenchmarkResults = sqliteTable('model_benchmark_results', {
+  providerModelId: text('provider_model_id').primaryKey().references(() => providerModels.id, { onDelete: 'cascade' }),
+  outcome: text('outcome', { enum: ['success', 'rate_limited', 'failed'] }).notNull(),
+  latencyMs: real('latency_ms'),
+  httpStatus: integer('http_status'),
+  errorMessage: text('error_message'),
+  testedAt: integer('tested_at', { mode: 'timestamp' }).notNull(),
+});
+
 export const modelRoutes = sqliteTable('model_routes', {
   id: text('id').primaryKey(),
   publicModelId: text('public_model_id').notNull().unique(),
@@ -253,6 +263,8 @@ export type ProviderCredential = typeof providerCredentials.$inferSelect;
 export type NewProviderCredential = typeof providerCredentials.$inferInsert;
 export type ProviderModel = typeof providerModels.$inferSelect;
 export type NewProviderModel = typeof providerModels.$inferInsert;
+export type ModelBenchmarkResultRecord = typeof modelBenchmarkResults.$inferSelect;
+export type NewModelBenchmarkResultRecord = typeof modelBenchmarkResults.$inferInsert;
 export type ModelRoute = typeof modelRoutes.$inferSelect;
 export type NewModelRoute = typeof modelRoutes.$inferInsert;
 export type ModelRouteTarget = typeof modelRouteTargets.$inferSelect;

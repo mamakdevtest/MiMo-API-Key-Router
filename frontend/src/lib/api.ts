@@ -12,9 +12,9 @@ function getCsrfToken(): string {
   return match ? match[1] : '';
 }
 
-async function fetchJson<T>(path: string, options: RequestInit = {}): Promise<T> {
+async function fetchJson<T>(path: string, options: RequestInit = {}, timeoutMs = 10000): Promise<T> {
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 10000);
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
 
   const hasBody = options.body !== undefined && options.body !== null;
   const method = (options.method || 'GET').toUpperCase();
@@ -113,6 +113,16 @@ export const api = {
     exhaustedKeys: number;
     requestsLast24h: number;
     successRate: number;
+    modelHealth: {
+      ready: number;
+      rate_limited: number;
+      untested: number;
+      stale: number;
+      failed: number;
+      inactive: number;
+      total: number;
+      retestRecommended: number;
+    };
   }>('/admin/dashboard'),
   usage: (period = '24h') => fetchJson<{
     period: string;
@@ -195,7 +205,14 @@ export const api = {
     }>) => fetchJson<{ success: boolean }>('/admin/settings', { method: 'PATCH', body: JSON.stringify(data) }),
   },
   models: {
-    list: () => fetchJson<Array<{ id: string; name: string; description: string; public: boolean }>>('/admin/models'),
+    list: () => fetchJson<Array<{
+      id: string;
+      name: string;
+      description: string;
+      public: boolean;
+      health: ModelHealth;
+      benchmark: ModelBenchmark | null;
+    }>>('/admin/models'),
   },
   rotateGatewayKey: () => fetchJson<{ key: string }>('/admin/rotate-gateway-key', { method: 'POST', body: '{}' }),
   changePassword: (currentPassword: string, newPassword: string) =>
@@ -277,6 +294,34 @@ export const api = {
       warnings: string[];
     }>('/admin/providers/validate', { method: 'POST', body: JSON.stringify(data) }),
     syncModels: (id: string) => fetchJson<any>(`/admin/providers/${id}/sync-models`, { method: 'POST', body: '{}' }),
+    benchmarkModels: (id: string, data: { modelIds?: string[]; concurrency?: number; limit?: number } = {}) =>
+      fetchJson<{
+        providerId: string;
+        providerName: string;
+        credentialName: string;
+        concurrency: number;
+        results: Array<{
+          upstreamModelId: string;
+          publicModelId: string;
+          credentialName?: string;
+          status: 'success' | 'failed';
+          latencyMs: number | null;
+          httpStatus: number | null;
+          rateLimited?: boolean;
+          error?: string;
+        }>;
+        summary: {
+          total: number;
+          successful: number;
+          failed: number;
+          averageLatencyMs: number | null;
+          fastestLatencyMs: number | null;
+          slowestLatencyMs: number | null;
+        };
+      }>(`/admin/providers/${id}/benchmark-models`, { method: 'POST', body: JSON.stringify(data) }, 5 * 60 * 1000),
+    benchmarkAllModels: (id: string) => fetchJson<any>(`/admin/providers/${id}/benchmark-all-models`, { method: 'POST', body: '{}' }),
+    getBenchmarkJob: (id: string, jobId: string) => fetchJson<any>(`/admin/providers/${id}/benchmark-jobs/${jobId}`),
+    cancelBenchmarkJob: (id: string, jobId: string) => fetchJson<any>(`/admin/providers/${id}/benchmark-jobs/${jobId}/cancel`, { method: 'POST', body: '{}' }),
     getPlan: (id: string) => fetchJson<any>(`/admin/providers/${id}/plan`),
     getConcurrency: (id: string) => fetchJson<any>(`/admin/providers/${id}/concurrency`),
     getModels: (id: string) => fetchJson<any[]>(`/admin/providers/${id}/models`),
@@ -310,12 +355,49 @@ export const api = {
   },
   // ── Model catalog ─────────────────────────────────────────
   modelCatalog: {
-    list: (page = 1, perPage = 50, search?: string) =>
+    list: (page = 1, perPage = 50, search?: string, providerId?: string) =>
       fetchJson<{ models: any[]; page: number; perPage: number; total: number }>(
-        `/admin/model-catalog?page=${page}&perPage=${perPage}${search ? `&search=${encodeURIComponent(search)}` : ''}`
+        `/admin/model-catalog?page=${page}&perPage=${perPage}${search ? `&search=${encodeURIComponent(search)}` : ''}${providerId ? `&providerId=${encodeURIComponent(providerId)}` : ''}`
       ),
+  },
+  mixRoutes: {
+    list: () => fetchJson<Array<{
+      id: string;
+      publicModelId: string;
+      enabled: boolean;
+      updatedAt: string;
+      targets: Array<{
+        providerModelId: string;
+        providerName: string;
+        providerType: string;
+        providerSlug: string;
+        upstreamModelId: string;
+        publicModelId: string;
+        priority: number;
+        health: ModelHealth;
+        benchmark: ModelBenchmark | null;
+      }>;
+    }>>('/admin/mix-routes'),
+    create: (data: { publicModelId: string; providerModelIds: string[] }) =>
+      fetchJson<{
+        id: string;
+        publicModelId: string;
+        targets: string[];
+        targetDetails: Array<{ providerModelId: string; publicModelId: string; health: ModelHealth; benchmark: ModelBenchmark | null }>;
+        message: string;
+      }>('/admin/mix-routes', { method: 'POST', body: JSON.stringify(data) }),
   },
   // ── Available models for route target selection ──────────
   availableModels: (providerId?: string) =>
     fetchJson<any[]>(`/admin/available-models${providerId ? `?providerId=${providerId}` : ''}`),
 };
+
+export type ModelBenchmark = {
+  outcome: 'success' | 'rate_limited' | 'failed';
+  latencyMs: number | null;
+  httpStatus: number | null;
+  errorMessage: string | null;
+  testedAt: string;
+};
+
+export type ModelHealth = 'ready' | 'rate_limited' | 'untested' | 'stale' | 'failed' | 'inactive';

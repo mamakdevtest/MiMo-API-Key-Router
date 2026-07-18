@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { OpenAICompatibleAdapter } from '../providers/adapters/openai-compatible.adapter.js';
 import type { ProviderInstance, DecryptedProviderCredential, CanonicalRequest } from '../providers/types.js';
 
@@ -140,5 +140,40 @@ describe('OpenAICompatibleAdapter', () => {
       routeTargetId: null,
     });
     expect(JSON.parse(req.body!).response_format).toEqual({ type: 'json_object' });
+  });
+
+  it('paginates unpaged catalogs and excludes obvious non-chat models', async () => {
+    const originalFetch = global.fetch;
+    global.fetch = vi.fn().mockImplementation(async () => new Response(JSON.stringify({
+      data: [
+        { id: 'text-embedding-3-small' },
+        { id: 'provider/video-model' },
+        { id: 'chat-model-a' },
+        { id: 'chat-model-b' },
+      ],
+    })));
+
+    try {
+      const page = await adapter.listModels!({
+        provider: makeProvider(),
+        credential,
+        page: 2,
+        perPage: 2,
+      });
+
+      expect(page.totalCount).toBe(4);
+      expect(page.page).toBe(2);
+      expect(page.models.map((model) => model.upstreamModelId)).toEqual(['chat-model-a', 'chat-model-b']);
+
+      const firstPage = await adapter.listModels!({
+        provider: makeProvider(),
+        credential,
+        page: 1,
+        perPage: 2,
+      });
+      expect(firstPage.models.map((model) => model.supportsChat)).toEqual([false, false]);
+    } finally {
+      global.fetch = originalFetch;
+    }
   });
 });

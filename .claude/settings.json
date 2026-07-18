@@ -4,10 +4,31 @@
   "env": {
     "ANTHROPIC_BASE_URL": "https://ai.emirhanmamak.com/api",
     "ANTHROPIC_API_KEY": "sk-5d63b14476bd427c9c3ca3901e0dd3fb",
-
     "ANTHROPIC_DEFAULT_SONNET_MODEL": "orcarouter.kimi/kimi-k3",
     "ANTHROPIC_DEFAULT_OPUS_MODEL": "vercel.moonshotai/kimi-k3",
     "ANTHROPIC_DEFAULT_HAIKU_MODEL": "orcarouter.kimi/kimi-k3",
     "ANTHROPIC_DEFAULT_FABLE_MODEL": "vercel.moonshotai/kimi-k2.7-code"
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/home/emirhanmamak/_Work/Web/API-Router/.graphify-venv/bin/graphify hook-guard search"
+          }
+        ]
+      },
+      {
+        "matcher": "Read|Glob",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/home/emirhanmamak/_Work/Web/API-Router/.graphify-venv/bin/graphify hook-guard read"
+          }
+        ]
+      }
+    ]
   }
 }

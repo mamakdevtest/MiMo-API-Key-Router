@@ -26,7 +26,10 @@ import type {
 } from '../providers/types.js';
 import { requestLogs, requestAttempts } from '../db/schema.js';
 
-const MAX_UPSTREAM_ATTEMPTS = parseInt(process.env.MAX_UPSTREAM_ATTEMPTS || '10', 10);
+// A Vercel mix may need two passes through several keys for each target model.
+// The default supports six models with ten active keys; deployments can lower
+// it if they want a stricter upstream request ceiling.
+const MAX_UPSTREAM_ATTEMPTS = parseInt(process.env.MAX_UPSTREAM_ATTEMPTS || '120', 10);
 
 export interface OrchestratorResult {
   success: boolean;
@@ -110,7 +113,6 @@ export class RequestOrchestrator {
     }
 
     // Try targets in priority order with credential failover
-    const triedCredentials = new Map<string, Set<string>>(); // providerId → Set<credentialId>
     let attempts = 0;
     let failoverCount = 0;
     let lastError: ClassifiedProviderError | null = null;
@@ -118,14 +120,27 @@ export class RequestOrchestrator {
     for (const target of route.targets) {
       if (attempts >= MAX_UPSTREAM_ATTEMPTS) break;
 
-      const providerTried = triedCredentials.get(target.providerId) ?? new Set<string>();
-      triedCredentials.set(target.providerId, providerTried);
+      // Start a fresh credential pass for each target. A key rate-limited on
+      // `model-a` can still serve `model-b` in a priority-failover mix.
+      const providerTried = new Set<string>();
 
       // Try each credential for this provider
       let credential: DecryptedProviderCredential | null = null;
+      let freeTierCredentialPasses = 1;
+      let sawVercelFreeTierLimit = false;
       while (attempts < MAX_UPSTREAM_ATTEMPTS) {
         credential = await this.providerService.selectCredential(target.providerId, providerTried);
-        if (!credential) break;
+        if (!credential) {
+          // Vercel's per-model free-tier 429 is not a broken key. Give every
+          // still-active key a second pass before falling through to a model
+          // alias target (for example `vercel.mix.router`).
+          if (sawVercelFreeTierLimit && freeTierCredentialPasses < 2) {
+            providerTried.clear();
+            freeTierCredentialPasses += 1;
+            continue;
+          }
+          break;
+        }
 
         attempts++;
         providerTried.add(credential.id);
@@ -149,6 +164,11 @@ export class RequestOrchestrator {
 
           const adapter = getAdapter(provider.type as any);
 
+          // Each route target may be a different upstream model. Set it
+          // before building the request so mix routes never send the prior
+          // target's model ID to the next provider/model.
+          canonicalRequest.model = target.upstreamModelId;
+
           // Build upstream request
           const upstreamReq = await adapter.buildUpstreamRequest({
             provider,
@@ -158,9 +178,6 @@ export class RequestOrchestrator {
             routeId: route.routeId,
             routeTargetId: target.routeTargetId,
           });
-
-          // Set upstream model ID
-          canonicalRequest.model = target.upstreamModelId;
 
           streamManager.broadcast({
             type: 'upstream_sent',
@@ -234,6 +251,9 @@ export class RequestOrchestrator {
               : classifyHttpError(upstreamResponse.status, errorBody, provider.type);
 
             lastError = classified;
+            if (classified.category === 'vercel_free_tier_model_rate_limited') {
+              sawVercelFreeTierLimit = true;
+            }
 
             // Update attempt with error info
             await this.db.update(requestAttempts).set({
