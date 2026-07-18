@@ -99,7 +99,7 @@ export const requestLogs = sqliteTable('request_logs', {
 
 export const providers = sqliteTable('providers', {
   id: text('id').primaryKey(),
-  type: text('type', { enum: ['mimo', 'featherless'] }).notNull(),
+  type: text('type', { enum: ['mimo', 'featherless', 'orcarouter', 'openai_compatible'] }).notNull(),
   name: text('name').notNull(),
   slug: text('slug').notNull().unique(),
   baseUrl: text('base_url').notNull(),
@@ -113,6 +113,17 @@ export const providers = sqliteTable('providers', {
   configJson: text('config_json'),
   billingMode: text('billing_mode', { enum: ['subscription', 'per_request', 'unknown'] }).notNull().default('unknown'),
   lastHealthCheckAt: integer('last_health_check_at', { mode: 'timestamp' }),
+  // ── Extended provider config (migration 0004) ──
+  documentationUrl: text('documentation_url'),
+  authHeader: text('auth_header').notNull().default('Authorization'),
+  authPrefix: text('auth_prefix').notNull().default('Bearer '),
+  modelsEndpoint: text('models_endpoint').notNull().default('/models'),
+  chatCompletionsEndpoint: text('chat_completions_endpoint').notNull().default('/chat/completions'),
+  embeddingsEndpoint: text('embeddings_endpoint'),
+  customHeadersJson: text('custom_headers_json'),
+  timeoutMs: integer('timeout_ms'),
+  healthCheckEndpoint: text('health_check_endpoint'),
+  capabilitiesJson: text('capabilities_json'),
   createdAt: integer('created_at', { mode: 'timestamp' }).notNull(),
   updatedAt: integer('updated_at', { mode: 'timestamp' }).notNull(),
 });

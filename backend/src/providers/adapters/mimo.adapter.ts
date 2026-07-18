@@ -25,9 +25,14 @@ import type {
   ProviderConcurrencyContext,
   ProviderPlanSnapshot,
   ProviderConcurrencySnapshot,
+  ProviderModelListContext,
+  ProviderModelDetailContext,
+  ProviderModelPage,
+  ProviderModelDetail,
 } from '../types.js';
-import { classifyHttpError, classifyNetworkError, isLowCreditError } from '../../routing/error-classifier.js';
+import { classifyHttpError, classifyNetworkError } from '../../routing/error-classifier.js';
 import { extractTokenUsage } from '../../usage/usage-normalizer.js';
+import { ALL_MODELS } from '@mimo/shared';
 
 const MIMO_PRICING: Record<string, { input: number; output: number }> = {
   'mimo-v2.5-pro': { input: 0.435, output: 0.87 },
@@ -37,19 +42,6 @@ const MIMO_PRICING: Record<string, { input: number; output: number }> = {
   'mimo-v2.5-tts-voiceclone': { input: 0, output: 0 },
   'mimo-v2.5-tts-voicedesign': { input: 0, output: 0 },
 };
-
-const ANTHROPIC_ALLOWLIST = new Set([
-  'anthropic-version', 'anthropic-beta', 'x-claude-code-*',
-  'content-type', 'accept',
-]);
-
-function isAnthropicHeaderAllowed(name: string): boolean {
-  const lower = name.toLowerCase();
-  if (ANTHROPIC_ALLOWLIST.has(lower)) return true;
-  if (lower.startsWith('anthropic-')) return true;
-  if (lower.startsWith('x-claude-code-')) return true;
-  return false;
-}
 
 export class MiMoAdapter implements ProviderAdapter {
   readonly type = 'mimo' as const;
@@ -114,12 +106,6 @@ export class MiMoAdapter implements ProviderAdapter {
       [providerConfig.authHeader]: `${providerConfig.authPrefix}${context.credential.secret}`,
     };
 
-    // For Anthropic ingress, only forward allowed headers
-    if (isIngressAnthropic) {
-      // Auth handled above
-    }
-
-    // Build the body based on ingress protocol
     const body = isIngressAnthropic
       ? this.buildAnthropicBody(context)
       : this.buildOpenAIBody(context);
@@ -184,7 +170,6 @@ export class MiMoAdapter implements ProviderAdapter {
     const body = context.upstreamBody as any;
     if (!body) return { id: 'unknown', model: 'unknown', content: null, toolCalls: null, finishReason: null, usage: null };
 
-    // Anthropic format
     if (body.content !== undefined && Array.isArray(body.content)) {
       const textBlocks = body.content.filter((b: any) => b.type === 'text');
       const toolBlocks = body.content.filter((b: any) => b.type === 'tool_use');
@@ -208,7 +193,6 @@ export class MiMoAdapter implements ProviderAdapter {
       };
     }
 
-    // OpenAI format
     const choice = body.choices?.[0];
     return {
       id: body.id ?? 'unknown',
@@ -244,6 +228,68 @@ export class MiMoAdapter implements ProviderAdapter {
 
   async extractUsage(context: UsageExtractionContext): Promise<NormalizedUsage | null> {
     return extractTokenUsage(context.responseBody);
+  }
+
+  async listModels(context: ProviderModelListContext): Promise<ProviderModelPage> {
+    const all = ALL_MODELS.map((model) => ({
+      upstreamModelId: model.id,
+      displayName: model.name,
+      modelClass: model.id.includes('tts') ? 'audio' : model.id.includes('asr') ? 'speech' : 'chat',
+      status: 'active',
+      contextLength: model.id.includes('tts') || model.id.includes('asr') ? null : 131072,
+      maxCompletionTokens: model.id.includes('tts') || model.id.includes('asr') ? null : 8192,
+      isGated: false,
+      availableOnCurrentPlan: true,
+    }));
+
+    const start = Math.max(0, (context.page - 1) * context.perPage);
+    const models = all.slice(start, start + context.perPage);
+
+    return {
+      models,
+      totalCount: all.length,
+      page: context.page,
+      perPage: context.perPage,
+    };
+  }
+
+  async getModel(context: ProviderModelDetailContext): Promise<ProviderModelDetail> {
+    const found = ALL_MODELS.find((model) => model.id === context.modelId);
+    if (!found) throw new Error(`MiMo model not found: ${context.modelId}`);
+
+    const pricing = MIMO_PRICING[found.id] ?? { input: 0, output: 0 };
+    const isSpeech = found.id.includes('asr');
+    const isAudio = found.id.includes('tts');
+
+    return {
+      upstreamModelId: found.id,
+      displayName: found.name,
+      modelClass: isAudio ? 'audio' : isSpeech ? 'speech' : 'chat',
+      status: 'active',
+      availabilityTier: 'standard',
+      contextLength: isAudio || isSpeech ? null : 131072,
+      maxCompletionTokens: isAudio || isSpeech ? null : 8192,
+      concurrencyCost: 1,
+      isGated: false,
+      availableOnCurrentPlan: true,
+      supportsTools: !isAudio && !isSpeech,
+      supportsVision: !isAudio && !isSpeech,
+      supportsChat: !isAudio && !isSpeech,
+      supportsTextCompletion: false,
+      supportsEmbeddings: false,
+      inputModalities: isSpeech ? ['audio'] : ['text'],
+      outputModalities: isAudio ? ['audio'] : ['text'],
+      tasks: isSpeech ? ['speech_to_text'] : isAudio ? ['text_to_speech'] : ['chat'],
+      pricing: {
+        prompt: String(pricing.input),
+        completion: String(pricing.output),
+        image: null,
+        request: null,
+      },
+      metadata: {
+        description: found.description,
+      },
+    };
   }
 
   private getConfig(provider: ProviderInstance) {

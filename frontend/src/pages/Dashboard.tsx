@@ -84,7 +84,7 @@ export function Dashboard() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold tracking-tight">Dashboard</h1>
-          <p className="text-muted-foreground">Overview of your MiMo API key router.</p>
+          <p className="text-muted-foreground">Overview of your provider-prefixed AI router.</p>
         </div>
         <div className="flex gap-1">
           {['1h', '24h', '7d', '30d'].map((p) => (

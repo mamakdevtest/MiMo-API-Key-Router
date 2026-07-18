@@ -1,12 +1,12 @@
-import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
-import { eq, asc, sql, count, gte } from 'drizzle-orm';
+import type { FastifyInstance } from 'fastify';
+import { eq, asc, sql, count, gte, and } from 'drizzle-orm';
 import { z } from 'zod';
 import { config } from '../config.js';
 import { encrypt, maskKey, hashGatewayKey, generateSecureToken } from '../crypto/index.js';
-import { apiKeys, settings, requestLogs, gatewayCredentials } from '../db/schema.js';
+import { apiKeys, settings, requestLogs, gatewayCredentials, providerCredentials, providers, providerModels } from '../db/schema.js';
 import { streamManager } from '../services/stream-manager.js';
 import type { Db } from '../db/index.js';
-import { ALL_MODELS } from '@mimo/shared';
+import { buildPublicModelId } from '../providers/public-model-id.js';
 
 const createKeySchema = z.object({
   label: z.string().min(1).max(100),
@@ -48,19 +48,18 @@ function toKeyResponse(key: typeof apiKeys.$inferSelect) {
 }
 
 export async function registerAdminRoutes(app: FastifyInstance, db: Db) {
-
-  app.get('/admin/dashboard', async (request, reply) => {
+  app.get('/admin/dashboard', async (_request, reply) => {
     const now = new Date();
     const dayAgo = new Date(now.getTime() - 24 * 60 * 60 * 1000);
 
-    const [keyStats] = await db
+    const [credentialStats] = await db
       .select({
-        total: count(apiKeys.id),
-        active: sql<number>`sum(case when ${apiKeys.status} = 'active' then 1 else 0 end)`,
-        cooldown: sql<number>`sum(case when ${apiKeys.status} = 'cooldown' then 1 else 0 end)`,
-        exhausted: sql<number>`sum(case when ${apiKeys.status} = 'exhausted' then 1 else 0 end)`,
+        total: count(providerCredentials.id),
+        active: sql<number>`sum(case when ${providerCredentials.status} = 'active' then 1 else 0 end)`,
+        cooldown: sql<number>`sum(case when ${providerCredentials.status} = 'cooldown' then 1 else 0 end)`,
+        exhausted: sql<number>`sum(case when ${providerCredentials.status} = 'exhausted' then 1 else 0 end)`,
       })
-      .from(apiKeys);
+      .from(providerCredentials);
 
     const [requestStats] = await db
       .select({
@@ -75,11 +74,11 @@ export async function registerAdminRoutes(app: FastifyInstance, db: Db) {
     const successRate = total > 0 ? Math.round((success / total) * 100) : 100;
 
     return reply.send({
-      gatewayStatus: (keyStats?.active ?? 0) > 0 ? 'healthy' : 'degraded',
-      totalKeys: keyStats?.total ?? 0,
-      activeKeys: keyStats?.active ?? 0,
-      cooldownKeys: keyStats?.cooldown ?? 0,
-      exhaustedKeys: keyStats?.exhausted ?? 0,
+      gatewayStatus: (credentialStats?.active ?? 0) > 0 ? 'healthy' : 'degraded',
+      totalKeys: credentialStats?.total ?? 0,
+      activeKeys: credentialStats?.active ?? 0,
+      cooldownKeys: credentialStats?.cooldown ?? 0,
+      exhaustedKeys: credentialStats?.exhausted ?? 0,
       requestsLast24h: total,
       successRate,
     });
@@ -138,13 +137,11 @@ export async function registerAdminRoutes(app: FastifyInstance, db: Db) {
     const { keys: items, startPriority } = parsed.data;
 
     await db.transaction((tx) => {
-      // Shift all existing keys starting from startPriority by items.length
       tx.update(apiKeys)
         .set({ priority: sql`${apiKeys.priority} + ${items.length}` })
         .where(sql`${apiKeys.priority} >= ${startPriority}`)
         .run();
 
-      // Insert all keys with sequential priorities
       for (let i = 0; i < items.length; i++) {
         const item = items[i];
         tx.insert(apiKeys).values({
@@ -282,16 +279,25 @@ export async function registerAdminRoutes(app: FastifyInstance, db: Db) {
   });
 
   app.get('/admin/models', async (_request, reply) => {
-    const setting = await db.query.settings.findFirst();
-    const publicIds = new Set((setting?.publicModelIds || 'mimo-v2.5,mimo-v2.5-pro').split(',').map((s) => s.trim()));
-    return reply.send(
-      ALL_MODELS.map((m) => ({
-        id: m.id,
-        name: m.name,
-        description: m.description,
-        public: publicIds.has(m.id),
-      }))
-    );
+    const rows = await db
+      .select({
+        providerSlug: providers.slug,
+        upstreamModelId: providerModels.upstreamModelId,
+        displayName: providerModels.displayName,
+        providerType: providers.type,
+        status: providerModels.status,
+      })
+      .from(providerModels)
+      .innerJoin(providers, eq(providerModels.providerId, providers.id))
+      .where(and(eq(providers.enabled, true), eq(providerModels.status, 'active')))
+      .orderBy(asc(providers.priority), asc(providerModels.upstreamModelId));
+
+    return reply.send(rows.map((row) => ({
+      id: buildPublicModelId({ slug: row.providerSlug }, row.upstreamModelId),
+      name: row.displayName || row.upstreamModelId,
+      description: `${row.providerType} provider model`,
+      public: true,
+    })));
   });
 
   app.get('/admin/logs', async (request, reply) => {
@@ -309,7 +315,7 @@ export async function registerAdminRoutes(app: FastifyInstance, db: Db) {
         timestamp: log.timestamp.toISOString(),
         route: log.route,
         model: log.model,
-        apiKeyId: log.apiKeyId,
+        apiKeyId: log.finalCredentialId,
         statusCode: log.statusCode,
         latencyMs: log.latencyMs,
         streaming: log.streaming,
@@ -322,8 +328,6 @@ export async function registerAdminRoutes(app: FastifyInstance, db: Db) {
       }))
     );
   });
-
-  // ── Usage Analytics ────────────────────────────────────────
 
   app.get('/admin/usage', async (request, reply) => {
     const { period } = request.query as { period?: string };
@@ -347,10 +351,9 @@ export async function registerAdminRoutes(app: FastifyInstance, db: Db) {
         since = new Date(now.getTime() - 24 * 60 * 60 * 1000);
     }
 
-    // Usage by model
     const byModel = await db
       .select({
-        model: requestLogs.model,
+        model: requestLogs.publicModelId,
         requests: count(requestLogs.id),
         totalTokens: sql<number>`coalesce(sum(${requestLogs.totalTokens}), 0)`,
         promptTokens: sql<number>`coalesce(sum(${requestLogs.promptTokens}), 0)`,
@@ -360,9 +363,8 @@ export async function registerAdminRoutes(app: FastifyInstance, db: Db) {
       })
       .from(requestLogs)
       .where(gte(requestLogs.timestamp, since))
-      .groupBy(requestLogs.model);
+      .groupBy(requestLogs.publicModelId);
 
-    // Usage over time (hourly buckets)
     const hourlyUsage = await db
       .select({
         hour: sql<string>`strftime('%Y-%m-%d %H:00', ${requestLogs.timestamp})`,
@@ -374,11 +376,11 @@ export async function registerAdminRoutes(app: FastifyInstance, db: Db) {
       .where(gte(requestLogs.timestamp, since))
       .groupBy(sql`strftime('%Y-%m-%d %H:00', ${requestLogs.timestamp})`);
 
-    // Usage by API Key
     const byKey = await db
       .select({
-        keyId: requestLogs.apiKeyId,
-        label: apiKeys.label,
+        keyId: requestLogs.finalCredentialId,
+        providerName: providers.name,
+        keyLabel: providerCredentials.name,
         requests: count(requestLogs.id),
         totalTokens: sql<number>`coalesce(sum(${requestLogs.totalTokens}), 0)`,
         promptTokens: sql<number>`coalesce(sum(${requestLogs.promptTokens}), 0)`,
@@ -387,11 +389,11 @@ export async function registerAdminRoutes(app: FastifyInstance, db: Db) {
         avgLatency: sql<number>`coalesce(avg(${requestLogs.latencyMs}), 0)`,
       })
       .from(requestLogs)
-      .leftJoin(apiKeys, eq(requestLogs.apiKeyId, apiKeys.id))
+      .leftJoin(providerCredentials, eq(requestLogs.finalCredentialId, providerCredentials.id))
+      .leftJoin(providers, eq(providerCredentials.providerId, providers.id))
       .where(gte(requestLogs.timestamp, since))
-      .groupBy(requestLogs.apiKeyId, apiKeys.label);
+      .groupBy(requestLogs.finalCredentialId, providerCredentials.name, providers.name);
 
-    // Totals
     const [totals] = await db
       .select({
         totalRequests: count(requestLogs.id),
@@ -427,7 +429,7 @@ export async function registerAdminRoutes(app: FastifyInstance, db: Db) {
       })),
       byKey: byKey.map((k) => ({
         keyId: k.keyId || 'unknown',
-        label: k.label || 'Unknown Key',
+        label: [k.providerName, k.keyLabel].filter(Boolean).join(' / ') || 'Unknown Key',
         requests: k.requests,
         totalTokens: k.totalTokens,
         promptTokens: k.promptTokens,
@@ -438,9 +440,7 @@ export async function registerAdminRoutes(app: FastifyInstance, db: Db) {
     });
   });
 
-  // ── Stream / SSE ──────────────────────────────────────────
-
-  app.get('/admin/stream', { config: { rateLimit: false } }, (request, reply) => {
+  app.get('/admin/stream', { config: { rateLimit: false } }, (_request, reply) => {
     reply.hijack();
     const rawRes = reply.raw;
     rawRes.writeHead(200, {
@@ -451,16 +451,12 @@ export async function registerAdminRoutes(app: FastifyInstance, db: Db) {
     });
 
     streamManager.addClient(reply);
-
-    // Initial connection message
     rawRes.write(`data: ${JSON.stringify({ type: 'connected', timestamp: Date.now() })}\n\n`);
   });
 
-  // ── Temporary Gateway Credentials ──────────────────────────
-
   const createTempKeySchema = z.object({
     label: z.string().min(1).max(100),
-    expiresInMinutes: z.number().int().min(1).max(43200).optional(), // max 30 days
+    expiresInMinutes: z.number().int().min(1).max(43200).optional(),
     maxRequests: z.number().int().min(1).max(100000).optional(),
   });
 
@@ -491,7 +487,7 @@ export async function registerAdminRoutes(app: FastifyInstance, db: Db) {
     }
 
     const { label, expiresInMinutes, maxRequests } = parsed.data;
-    const rawKey = `mimo_temp_${generateSecureToken(24)}`;
+    const rawKey = `router_${generateSecureToken(24)}`;
     const keyHash = await hashGatewayKey(rawKey);
     const now = new Date();
 
@@ -510,7 +506,7 @@ export async function registerAdminRoutes(app: FastifyInstance, db: Db) {
 
     return reply.status(201).send({
       id: credential[0].id,
-      key: rawKey, // shown once only
+      key: rawKey,
       label,
       maskedKey: maskKey(rawKey),
       expiresAt: credential[0].expiresAt?.toISOString() ?? null,

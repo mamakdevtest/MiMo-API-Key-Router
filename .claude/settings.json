@@ -5,8 +5,9 @@
     "ANTHROPIC_BASE_URL": "https://ai.emirhanmamak.com/api",
     "ANTHROPIC_API_KEY": "sk-5d63b14476bd427c9c3ca3901e0dd3fb",
 
-    "ANTHROPIC_DEFAULT_SONNET_MODEL": "mimo-ehm.mimo-v2.5-pro",
-    "ANTHROPIC_DEFAULT_OPUS_MODEL": "featherless.deepseek-ai/DeepSeek-V4-Pro",
-    "ANTHROPIC_DEFAULT_HAIKU_MODEL": "featherless.zai-org/GLM-5.2"
+    "ANTHROPIC_DEFAULT_SONNET_MODEL": "orcarouter.kimi/kimi-k3",
+    "ANTHROPIC_DEFAULT_OPUS_MODEL": "vercel.moonshotai/kimi-k3",
+    "ANTHROPIC_DEFAULT_HAIKU_MODEL": "orcarouter.kimi/kimi-k3",
+    "ANTHROPIC_DEFAULT_FABLE_MODEL": "vercel.moonshotai/kimi-k2.7-code"
   }
 }

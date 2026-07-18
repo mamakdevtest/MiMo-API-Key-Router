@@ -54,6 +54,16 @@ export class ProviderService {
     billingMode?: BillingMode;
     priority?: number;
     configJson?: string;
+    documentationUrl?: string | null;
+    authHeader?: string;
+    authPrefix?: string;
+    modelsEndpoint?: string;
+    chatCompletionsEndpoint?: string;
+    embeddingsEndpoint?: string | null;
+    customHeadersJson?: string | null;
+    timeoutMs?: number | null;
+    healthCheckEndpoint?: string | null;
+    capabilitiesJson?: string | null;
   }): Promise<ProviderInstance> {
     const id = crypto.randomUUID();
     const now = new Date();
@@ -69,6 +79,16 @@ export class ProviderService {
       healthStatus: 'unknown',
       enabled: true,
       configJson: data.configJson ?? null,
+      documentationUrl: data.documentationUrl ?? null,
+      authHeader: data.authHeader ?? 'Authorization',
+      authPrefix: data.authPrefix ?? 'Bearer ',
+      modelsEndpoint: data.modelsEndpoint ?? '/models',
+      chatCompletionsEndpoint: data.chatCompletionsEndpoint ?? '/chat/completions',
+      embeddingsEndpoint: data.embeddingsEndpoint ?? null,
+      customHeadersJson: data.customHeadersJson ?? null,
+      timeoutMs: data.timeoutMs ?? null,
+      healthCheckEndpoint: data.healthCheckEndpoint ?? null,
+      capabilitiesJson: data.capabilitiesJson ?? null,
       createdAt: now,
       updatedAt: now,
     });
@@ -85,6 +105,16 @@ export class ProviderService {
     healthMessage: string | null;
     configJson: string | null;
     billingMode: BillingMode;
+    documentationUrl: string | null;
+    authHeader: string;
+    authPrefix: string;
+    modelsEndpoint: string;
+    chatCompletionsEndpoint: string;
+    embeddingsEndpoint: string | null;
+    customHeadersJson: string | null;
+    timeoutMs: number | null;
+    healthCheckEndpoint: string | null;
+    capabilitiesJson: string | null;
   }>): Promise<void> {
     await this.db.update(providers).set({ ...data, updatedAt: new Date() }).where(eq(providers.id, id));
   }
@@ -330,6 +360,16 @@ export class ProviderService {
       configJson: row.configJson,
       billingMode: row.billingMode as BillingMode,
       lastHealthCheckAt: row.lastHealthCheckAt,
+      documentationUrl: row.documentationUrl,
+      authHeader: row.authHeader,
+      authPrefix: row.authPrefix,
+      modelsEndpoint: row.modelsEndpoint,
+      chatCompletionsEndpoint: row.chatCompletionsEndpoint,
+      embeddingsEndpoint: row.embeddingsEndpoint,
+      customHeadersJson: row.customHeadersJson,
+      timeoutMs: row.timeoutMs,
+      healthCheckEndpoint: row.healthCheckEndpoint,
+      capabilitiesJson: row.capabilitiesJson,
       createdAt: row.createdAt,
       updatedAt: row.updatedAt,
     };

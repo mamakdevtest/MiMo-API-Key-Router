@@ -136,7 +136,7 @@ OpenAI Base URL: https://api.ai.emirhanmamak.com/v1
 API Key: <GATEWAY_API_KEY>
 ```
 
-The default public models are `mimo-v2.5` and `mimo-v2.5-pro`. You can toggle additional models (ASR, TTS) from the admin dashboard Settings page.
+Use the prefixed public model IDs returned by `/v1/models`, for example `mimo-main/mimo-v2.5-pro`. These IDs come from synced provider catalogs and are collision-safe across providers.
 
 ## 9. IP Allowlist
 

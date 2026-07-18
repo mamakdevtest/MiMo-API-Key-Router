@@ -27,6 +27,7 @@ const envSchema = z.object({
   MIMO_ANTHROPIC_BASE_URL: z.string().url().default('https://api.xiaomimimo.com/anthropic'),
   MIMO_AUTH_HEADER: z.string().default('Authorization'),
   MIMO_AUTH_PREFIX: z.string().default('Bearer '),
+  ALLOW_PRIVATE_PROVIDER_URLS: z.string().default('false').transform((v) => v === 'true'),
 });
 
 const parsed = envSchema.safeParse(process.env);
@@ -58,6 +59,7 @@ export const config = {
   mimoAnthropicBaseUrl: raw.MIMO_ANTHROPIC_BASE_URL,
   mimoAuthHeader: raw.MIMO_AUTH_HEADER,
   mimoAuthPrefix: raw.MIMO_AUTH_PREFIX,
+  allowPrivateProviderUrls: raw.ALLOW_PRIVATE_PROVIDER_URLS,
 } as const;
 
 export type Config = typeof config;

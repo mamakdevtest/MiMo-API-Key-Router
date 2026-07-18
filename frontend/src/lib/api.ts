@@ -257,6 +257,25 @@ export const api = {
     enable: (id: string) => fetchJson<{ success: boolean }>(`/admin/providers/${id}/enable`, { method: 'POST', body: '{}' }),
     disable: (id: string) => fetchJson<{ success: boolean }>(`/admin/providers/${id}/disable`, { method: 'POST', body: '{}' }),
     test: (id: string) => fetchJson<any>(`/admin/providers/${id}/test`, { method: 'POST', body: '{}' }),
+    validate: (data: {
+      baseUrl: string;
+      authHeader?: string;
+      authPrefix?: string;
+      modelsEndpoint?: string;
+      chatCompletionsEndpoint?: string;
+      secret?: string;
+      customHeaders?: Record<string, string>;
+      timeoutMs?: number;
+    }) => fetchJson<{
+      urlSafe: boolean;
+      modelsReachable: boolean;
+      authValid: boolean | null;
+      streamingWorks: boolean | null;
+      modelsCount: number | null;
+      capabilities: Record<string, boolean>;
+      errors: string[];
+      warnings: string[];
+    }>('/admin/providers/validate', { method: 'POST', body: JSON.stringify(data) }),
     syncModels: (id: string) => fetchJson<any>(`/admin/providers/${id}/sync-models`, { method: 'POST', body: '{}' }),
     getPlan: (id: string) => fetchJson<any>(`/admin/providers/${id}/plan`),
     getConcurrency: (id: string) => fetchJson<any>(`/admin/providers/${id}/concurrency`),

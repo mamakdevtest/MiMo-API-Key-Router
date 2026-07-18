@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Database, Search, Filter, Wrench, Eye, MessageSquare, Layers } from 'lucide-react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Database, Search, Wrench, Eye, MessageSquare, Layers } from 'lucide-react';
+import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { api } from '@/lib/api';
@@ -24,14 +24,14 @@ export function ModelCatalog() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold tracking-tight">Model Catalog</h1>
-          <p className="text-muted-foreground">All models synced from providers.</p>
+          <p className="text-muted-foreground">Read-only catalog of synced provider models and their public prefixed IDs.</p>
         </div>
       </div>
 
       <div className="flex gap-3">
         <div className="relative flex-1">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-          <Input placeholder="Search models..." value={search} onChange={e => { setSearch(e.target.value); setPage(1); }} className="pl-10" />
+          <Input placeholder="Search provider, public model ID, or upstream model..." value={search} onChange={e => { setSearch(e.target.value); setPage(1); }} className="pl-10" />
         </div>
       </div>
 
@@ -42,9 +42,9 @@ export function ModelCatalog() {
               <thead>
                 <tr className="border-b bg-muted/30">
                   <th className="text-left py-3 px-4 font-medium">Provider</th>
-                  <th className="text-left py-3 px-4 font-medium">Model ID</th>
+                  <th className="text-left py-3 px-4 font-medium">Public Model ID</th>
+                  <th className="text-left py-3 px-4 font-medium">Upstream Model</th>
                   <th className="text-left py-3 px-4 font-medium">Display Name</th>
-                  <th className="text-left py-3 px-4 font-medium">Class</th>
                   <th className="text-center py-3 px-4 font-medium">Context</th>
                   <th className="text-center py-3 px-4 font-medium">Capabilities</th>
                   <th className="text-center py-3 px-4 font-medium">Status</th>
@@ -56,17 +56,20 @@ export function ModelCatalog() {
                 ) : models.length === 0 ? (
                   <tr><td colSpan={7} className="text-center py-12 text-muted-foreground">
                     <Database className="w-8 h-8 mx-auto mb-2 opacity-50" />
-                    No models found. Sync a provider first.
+                    No models found. Sync a provider from its own details page.
                   </td></tr>
                 ) : (
                   models.map((m: any) => (
                     <tr key={m.id} className="border-b last:border-0 hover:bg-muted/20 transition-colors">
                       <td className="py-2 px-4">
-                        <span className="text-xs px-2 py-1 rounded bg-blue-500/15 text-blue-400 font-mono">{m.providerId?.slice(0, 8)}</span>
+                        <div className="space-y-1">
+                          <div className="font-medium">{m.providerName}</div>
+                          <div className="text-xs text-muted-foreground">{m.providerType}</div>
+                        </div>
                       </td>
-                      <td className="py-2 px-4 font-mono text-xs max-w-[200px] truncate" title={m.upstreamModelId}>{m.upstreamModelId}</td>
+                      <td className="py-2 px-4 font-mono text-xs max-w-[260px] truncate" title={m.publicModelId}>{m.publicModelId}</td>
+                      <td className="py-2 px-4 font-mono text-xs max-w-[220px] truncate" title={m.upstreamModelId}>{m.upstreamModelId}</td>
                       <td className="py-2 px-4">{m.displayName || '-'}</td>
-                      <td className="py-2 px-4 text-muted-foreground text-xs">{m.modelClass || '-'}</td>
                       <td className="py-2 px-4 text-center font-mono text-xs">{m.contextLength ? `${(m.contextLength / 1000).toFixed(0)}K` : '-'}</td>
                       <td className="py-2 px-4">
                         <div className="flex items-center justify-center gap-1">
@@ -79,7 +82,7 @@ export function ModelCatalog() {
                       <td className="py-2 px-4 text-center">
                         <span className={`text-xs px-2 py-1 rounded ${
                           m.status === 'active' ? 'bg-green-500/15 text-green-400' :
-                          m.status === 'pending_deploy' ? 'bg-yellow-500/15 text-yellow-400' :
+                          m.status === 'possibly_removed' ? 'bg-yellow-500/15 text-yellow-400' :
                           'bg-red-500/15 text-red-400'
                         }`}>{m.status}</span>
                       </td>

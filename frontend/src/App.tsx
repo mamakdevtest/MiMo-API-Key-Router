@@ -8,7 +8,6 @@ import { Dashboard } from './pages/Dashboard';
 import { Providers } from './pages/Providers';
 import { ProviderDetails } from './pages/ProviderDetails';
 import { ModelCatalog } from './pages/ModelCatalog';
-import { Routes as RoutesPage } from './pages/Routes';
 import { Keys } from './pages/Keys';
 import { Settings } from './pages/Settings';
 import { Docs } from './pages/Docs';
@@ -35,7 +34,7 @@ function App() {
           queryClient.invalidateQueries({ queryKey: ['logs'] });
           queryClient.invalidateQueries({ queryKey: ['keys'] });
           queryClient.invalidateQueries({ queryKey: ['providers'] });
-          queryClient.invalidateQueries({ queryKey: ['model-routes'] });
+          queryClient.invalidateQueries({ queryKey: ['model-catalog'] });
         }
       } catch (err) {}
     };
@@ -89,7 +88,6 @@ function App() {
           <Route path="/providers" element={<Providers />} />
           <Route path="/providers/:id" element={<ProviderDetails />} />
           <Route path="/model-catalog" element={<ModelCatalog />} />
-          <Route path="/routes" element={<RoutesPage />} />
           <Route path="/keys" element={<Keys />} />
           <Route path="/temp-keys" element={<TempKeys />} />
           <Route path="/requests" element={<Logs />} />

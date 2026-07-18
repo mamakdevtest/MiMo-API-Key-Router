@@ -1,34 +1,26 @@
-# 03 - Adding and Managing MiMo API Keys
+# 03 - Managing Provider API Keys
 
-MiMo API Key Router uses a pool of real MiMo `sk-...` keys. The gateway picks the highest-priority available key for each request.
+The router no longer uses one global upstream key pool. Each provider owns its own real API keys, and the router selects only from that provider's pool when a prefixed public model ID points there.
 
-## Adding a Key
+## Adding Provider Keys
 
-1. Go to **API Keys** in the dashboard.
-2. Click **Add Key**.
-3. Fill in the form:
-   - **Label** — a friendly name, e.g. "Main Key" or "Backup 1"
-   - **MiMo API Key** — the real `sk-...` key from Xiaomi MiMo
+1. Go to **Providers** in the dashboard.
+2. Create or open a provider such as MiMo or Featherless.
+3. Click **Add Key** or **Bulk Import**.
+4. Fill in the form:
+   - **Label** — a friendly name, e.g. `Main Key` or `Backup 1`
+   - **Provider API Key** — the real upstream `sk-...` key for that provider
    - **Priority** — `0` is highest; lower numbers are tried first
-4. Click **Save Key**.
+5. Click **Save provider key**.
 
-> The real key is shown only during entry. After saving, only a masked version like `sk-****7A9F` is displayed.
+> The real key is shown only during entry. After saving, only a masked version is displayed.
 
-## Reordering Keys
+## Testing and Syncing
 
-Keys are always tried from top to bottom. Use the **Up** and **Down** arrows to change the order.
+From the provider details page you can:
 
-## Key Actions
-
-Each key row has action buttons:
-
-| Button | Effect |
-|--------|--------|
-| Up / Down | Change priority order |
-| Power | Enable a disabled/invalid/exhausted key |
-| Power Off | Disable a key manually |
-| Rotate | Reset cooldown/error state |
-| Trash | Delete the key permanently |
+- **Test** — validates the currently selected provider credential against the upstream API
+- **Sync Models** — pulls the provider's model list into the local model catalog
 
 ## Key States
 
@@ -40,8 +32,16 @@ Each key row has action buttons:
 | `disabled` | Key was manually disabled |
 | `invalid` | Key returned 401 (unauthorized); removed from rotation until manually reset |
 
+## How Routing Uses These Keys
+
+- A client sends a request with a router key.
+- The request references a prefixed public model ID, such as `mimo-main/mimo-v2.5-pro`.
+- The router resolves that model to the owning provider.
+- Only that provider's credentials are considered for routing and failover.
+
 ## Best Practices
 
-- Put your most reliable key at priority `0`.
-- Add at least one backup key.
-- Check the dashboard regularly for `exhausted` or `invalid` keys.
+- Keep at least one backup key per provider.
+- Use clear provider-specific labels.
+- Run **Test** after adding new keys.
+- Run **Sync Models** after changing provider accounts or permissions.

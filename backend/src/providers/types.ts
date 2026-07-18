@@ -11,7 +11,7 @@
 // Provider types (extensible via union)
 // ────────────────────────────────────────────────────────────
 
-export type ProviderType = 'mimo' | 'featherless';
+export type ProviderType = 'mimo' | 'featherless' | 'orcarouter' | 'openai_compatible';
 
 export type BillingMode = 'subscription' | 'per_request' | 'unknown';
 
@@ -77,6 +77,17 @@ export interface ProviderInstance {
   configJson: string | null;
   billingMode: BillingMode;
   lastHealthCheckAt: Date | null;
+  // ── Extended provider config (migration 0004) ──
+  documentationUrl: string | null;
+  authHeader: string;
+  authPrefix: string;
+  modelsEndpoint: string;
+  chatCompletionsEndpoint: string;
+  embeddingsEndpoint: string | null;
+  customHeadersJson: string | null;
+  timeoutMs: number | null;
+  healthCheckEndpoint: string | null;
+  capabilitiesJson: string | null;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -415,6 +426,11 @@ export type CanonicalToolChoice =
   | 'required'
   | { type: 'function'; function: { name: string } };
 
+export type CanonicalResponseFormat =
+  | { type: 'text' }
+  | { type: 'json_object' }
+  | { type: 'json_schema'; jsonSchema: Record<string, unknown> };
+
 export interface CanonicalRequest {
   model: string;
   messages: CanonicalMessage[];
@@ -425,6 +441,8 @@ export interface CanonicalRequest {
   stream?: boolean;
   tools?: CanonicalToolDefinition[];
   toolChoice?: CanonicalToolChoice;
+  /** Structured output (json_object / json_schema) */
+  responseFormat?: CanonicalResponseFormat;
   /** Provider-specific extras (e.g. chat_template_kwargs) */
   extra?: Record<string, unknown>;
 }

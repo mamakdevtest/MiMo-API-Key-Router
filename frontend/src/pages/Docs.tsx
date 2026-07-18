@@ -28,11 +28,7 @@ function CopyBox({ text, label }: { text: string; label: string }) {
 }
 
 export function Docs() {
-  const gatewayKey = '<YOUR_GATEWAY_API_KEY>';
-
-  // Dynamically detect the server's base URL from the current browser location.
-  // This works whether accessed via domain (api.example.com),
-  // IP (http://1.2.3.4:4000), or localhost (http://localhost:4000).
+  const routerKey = '<YOUR_ROUTER_KEY>';
   const origin = typeof window !== 'undefined' ? window.location.origin : 'https://api.ai.emirhanmamak.com';
   const baseUrl = origin;
 
@@ -40,23 +36,36 @@ export function Docs() {
     <div className="space-y-8 max-w-4xl">
       <div>
         <h1 className="text-3xl font-bold tracking-tight">Documentation</h1>
-        <p className="text-muted-foreground">
-          How to connect your clients to MiMo API Key Router.
-        </p>
+        <p className="text-muted-foreground">How the simplified provider-prefixed router works with OpenAI-compatible and Anthropic-compatible clients.</p>
       </div>
 
       <Card>
         <CardHeader>
-          <CardTitle>Your Router Details</CardTitle>
+          <CardTitle>Router Basics</CardTitle>
         </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="p-3 rounded-md bg-muted">
-            <p className="text-xs text-muted-foreground mb-1">Detected Server</p>
-            <p className="text-sm font-mono">{baseUrl}</p>
-          </div>
+        <CardContent className="space-y-4 text-sm text-muted-foreground">
+          <p>Clients only receive one router key. Real MiMo or Featherless provider keys never leave the server.</p>
+          <p>Each synced model is exposed with a prefixed public ID like <code>mimo-main/mimo-v2.5-pro</code> or <code>featherless-main/meta-llama/...</code>.</p>
+          <p>When a request comes in, the router reads the public model ID, finds the owning provider, picks a healthy key from that provider's own key pool, and forwards the request upstream.</p>
           <CopyBox label="Base URL" text={baseUrl} />
-          <CopyBox label="OpenAI Endpoint" text={`${baseUrl}/v1`} />
-          <CopyBox label="Anthropic Endpoint" text={baseUrl} />
+          <CopyBox label="OpenAI Base URL" text={`${baseUrl}/v1`} />
+          <CopyBox label="Anthropic Base URL" text={baseUrl} />
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Provider Setup Flow</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3 text-sm text-muted-foreground">
+          <ol className="list-decimal list-inside space-y-2">
+            <li>Create a provider from <Link to="/providers" className="text-primary hover:underline">Providers</Link>.</li>
+            <li>Open that provider and add its real upstream API keys.</li>
+            <li>Use <strong>Test</strong> to validate a provider key.</li>
+            <li>Use <strong>Sync Models</strong> to load that provider's models into the catalog.</li>
+            <li>Open <Link to="/model-catalog" className="text-primary hover:underline">Model Catalog</Link> and copy the prefixed public model IDs.</li>
+            <li>Rotate or create a router key from <Link to="/keys" className="text-primary hover:underline">Router Keys</Link> and give only that key to clients.</li>
+          </ol>
         </CardContent>
       </Card>
 
@@ -65,79 +74,25 @@ export function Docs() {
           <CardTitle>Claude Code</CardTitle>
         </CardHeader>
         <CardContent className="space-y-6">
-          <div>
-            <p className="text-sm font-medium mb-2">Method 1: Environment Variables</p>
-            <p className="text-sm text-muted-foreground mb-3">
-              Set these before running Claude Code:
-            </p>
-            <CopyBox
-              label="Shell environment variables"
-              text={`export ANTHROPIC_BASE_URL=${baseUrl}
-export ANTHROPIC_AUTH_TOKEN=${gatewayKey}
-export ANTHROPIC_MODEL=mimo-v2.5-pro
-export ANTHROPIC_DEFAULT_SONNET_MODEL=mimo-v2.5-pro
-export ANTHROPIC_DEFAULT_OPUS_MODEL=mimo-v2.5-pro
-export ANTHROPIC_DEFAULT_HAIKU_MODEL=mimo-v2.5`}
-            />
-          </div>
+          <CopyBox
+            label="Shell environment variables"
+            text={`export ANTHROPIC_BASE_URL=${baseUrl}
+export ANTHROPIC_AUTH_TOKEN=${routerKey}
+export ANTHROPIC_MODEL=mimo-main/mimo-v2.5-pro`}
+          />
 
-          <div className="border-t pt-4">
-            <p className="text-sm font-medium mb-2">Method 2: Project settings.json (Recommended)</p>
-            <p className="text-sm text-muted-foreground mb-3">
-              Create <code>.claude/settings.json</code> in your project root. This persists across sessions.
-            </p>
-            <CopyBox
-              label=".claude/settings.json"
-              text={JSON.stringify({
-                env: {
-                  ANTHROPIC_BASE_URL: baseUrl,
-                  ANTHROPIC_AUTH_TOKEN: gatewayKey,
-                  ANTHROPIC_MODEL: "mimo-v2.5-pro",
-                  ANTHROPIC_DEFAULT_SONNET_MODEL: "mimo-v2.5-pro",
-                  ANTHROPIC_DEFAULT_OPUS_MODEL: "mimo-v2.5-pro",
-                  ANTHROPIC_DEFAULT_HAIKU_MODEL: "mimo-v2.5"
-                }
-              }, null, 2)}
-            />
-          </div>
+          <CopyBox
+            label=".claude/settings.json"
+            text={JSON.stringify({
+              env: {
+                ANTHROPIC_BASE_URL: baseUrl,
+                ANTHROPIC_AUTH_TOKEN: routerKey,
+                ANTHROPIC_MODEL: 'mimo-main/mimo-v2.5-pro',
+              }
+            }, null, 2)}
+          />
 
-          <div className="border-t pt-4">
-            <p className="text-sm font-medium mb-2">Available Models & Pricing</p>
-            <div className="space-y-2 text-sm">
-              <div className="p-2 rounded bg-muted flex justify-between">
-                <span><code>mimo-v2.5-pro</code> — Advanced chat</span>
-                <span className="text-muted-foreground">$0.435/M in · $0.87/M out</span>
-              </div>
-              <div className="p-2 rounded bg-muted flex justify-between">
-                <span><code>mimo-v2.5</code> — General chat</span>
-                <span className="text-muted-foreground">$0.14/M in · $0.28/M out</span>
-              </div>
-              <div className="p-2 rounded bg-muted flex justify-between">
-                <span><code>mimo-v2.5-asr</code> — Speech recognition</span>
-                <span className="text-muted-foreground">$0.074/h audio</span>
-              </div>
-              <div className="p-2 rounded bg-muted flex justify-between">
-                <span><code>mimo-v2.5-tts</code> — Text-to-speech</span>
-                <span className="text-green-500">Free (limited time)</span>
-              </div>
-              <div className="p-2 rounded bg-muted flex justify-between">
-                <span><code>mimo-v2.5-tts-voiceclone</code> — Voice cloning</span>
-                <span className="text-green-500">Free (limited time)</span>
-              </div>
-              <div className="p-2 rounded bg-muted flex justify-between">
-                <span><code>mimo-v2.5-tts-voicedesign</code> — Voice design</span>
-                <span className="text-green-500">Free (limited time)</span>
-              </div>
-            </div>
-            <p className="text-xs text-muted-foreground mt-2">
-              Only public models (toggled in Settings) appear in <code>/v1/models</code>.
-              All models can be used directly by ID.
-            </p>
-          </div>
-
-          <p className="text-sm text-muted-foreground">
-            Then start Claude Code normally. It will use your router as the Anthropic endpoint.
-          </p>
+          <p className="text-sm text-muted-foreground">Anthropic-compatible requests go to <code>/v1/messages</code>, and the router forwards them to the provider that owns the requested prefixed model.</p>
         </CardContent>
       </Card>
 
@@ -146,19 +101,9 @@ export ANTHROPIC_DEFAULT_HAIKU_MODEL=mimo-v2.5`}
           <CardTitle>Open WebUI</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
-          <ol className="list-decimal list-inside space-y-2 text-sm text-muted-foreground">
-            <li>Open Open WebUI settings.</li>
-            <li>Add a new OpenAI API connection.</li>
-            <li>Use these values:</li>
-          </ol>
-          <CopyBox
-            label="Connection settings"
-            text={`OpenAI Base URL: ${baseUrl}/v1
-API Key: ${gatewayKey}`}
-          />
-          <p className="text-sm text-muted-foreground">
-            Save and refresh the model list. Select <code>mimo-v2.5</code> or <code>mimo-v2.5-pro</code>.
-          </p>
+          <CopyBox label="Connection settings" text={`OpenAI Base URL: ${baseUrl}/v1
+API Key: ${routerKey}`} />
+          <p className="text-sm text-muted-foreground">After saving, refresh the model list and choose one of the prefixed model IDs from <code>/v1/models</code>.</p>
         </CardContent>
       </Card>
 
@@ -170,10 +115,10 @@ API Key: ${gatewayKey}`}
           <CopyBox
             label="cURL example"
             text={`curl ${baseUrl}/v1/chat/completions \\
-  -H "Authorization: Bearer ${gatewayKey}" \\
+  -H "Authorization: Bearer ${routerKey}" \\
   -H "Content-Type: application/json" \\
   -d '{
-    "model": "mimo-v2.5-pro",
+    "model": "mimo-main/mimo-v2.5-pro",
     "messages": [{"role": "user", "content": "Hello"}]
   }'`}
           />
@@ -188,11 +133,11 @@ API Key: ${gatewayKey}`}
           <CopyBox
             label="cURL example"
             text={`curl ${baseUrl}/v1/messages \\
-  -H "Authorization: Bearer ${gatewayKey}" \\
+  -H "Authorization: Bearer ${routerKey}" \\
   -H "Content-Type: application/json" \\
   -H "anthropic-version: 2023-06-01" \\
   -d '{
-    "model": "mimo-v2.5-pro",
+    "model": "mimo-main/mimo-v2.5-pro",
     "max_tokens": 1024,
     "messages": [{"role": "user", "content": "Hello"}]
   }'`}
@@ -202,21 +147,12 @@ API Key: ${gatewayKey}`}
 
       <Card>
         <CardHeader>
-          <CardTitle>Adding MiMo Keys</CardTitle>
+          <CardTitle>Router Keys vs Provider Keys</CardTitle>
         </CardHeader>
-        <CardContent className="space-y-4 text-sm text-muted-foreground">
-          <p>
-            Before clients can use the router, you must add real MiMo API keys:
-          </p>
-          <ol className="list-decimal list-inside space-y-2">
-            <li>Go to <Link to="/keys" className="text-primary hover:underline">API Keys</Link>.</li>
-            <li>Click <strong>Add Key</strong>.</li>
-            <li>Enter a label, the real <code>sk-...</code> MiMo key, and a priority (0 = highest).</li>
-            <li>Click <strong>Save Key</strong>.</li>
-          </ol>
-          <p>
-            The router will try keys in priority order. If the top key fails, it automatically falls back to the next one.
-          </p>
+        <CardContent className="space-y-3 text-sm text-muted-foreground">
+          <p><strong>Router key:</strong> the client-facing key used by Open WebUI, Claude Code, temp-mail flows, and other integrations.</p>
+          <p><strong>Provider keys:</strong> the real upstream keys stored only inside each provider record. They are health-checked, disabled, cooled down, or failed over per provider.</p>
+          <p><strong>Temporary router keys:</strong> shorter-lived client keys you can generate from <Link to="/temp-keys" className="text-primary hover:underline">Temp Keys</Link> for external consumers.</p>
         </CardContent>
       </Card>
 
@@ -225,9 +161,7 @@ API Key: ${gatewayKey}`}
           <CardTitle>Need More Help?</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4 text-sm text-muted-foreground">
-          <p>
-            Check the full documentation in the repository for setup, security, failover behavior, Coolify deployment, and troubleshooting.
-          </p>
+          <p>Check the repository docs for deployment, security, and troubleshooting details. This page focuses on the new simplified provider-prefixed routing flow.</p>
           <a
             href="https://github.com/mamakdevtest/MiMo-API-Key-Router/tree/main/docs"
             target="_blank"

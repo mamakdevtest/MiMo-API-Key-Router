@@ -14,14 +14,13 @@ import { setupAdmin } from './services/setup.js';
 import { registerAuth } from './auth/index.js';
 import { registerProxyRoutes } from './routes/proxy.js';
 import { registerAdminRoutes } from './routes/admin.js';
-
-// ── Multi-Provider imports ─────────────────────────────────
 import { registerAdapter } from './providers/registry.js';
 import { MiMoAdapter } from './providers/adapters/mimo.adapter.js';
 import { FeatherlessAdapter } from './providers/adapters/featherless.adapter.js';
+import { OrcaRouterAdapter } from './providers/adapters/orcarouter.adapter.js';
+import { OpenAICompatibleAdapter } from './providers/adapters/openai-compatible.adapter.js';
 import { registerGatewayRoutes } from './routes/gateway.js';
 import { registerAdminProviderRoutes } from './routes/admin-providers.js';
-import { registerAdminModelRoutes } from './routes/admin-routes.js';
 import { ProviderHealthService } from './services/provider-health-service.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -34,18 +33,18 @@ const app = Fastify({
   trustProxy: config.trustProxy,
 });
 
-// ── Register provider adapters ─────────────────────────────
 registerAdapter(new MiMoAdapter());
 registerAdapter(new FeatherlessAdapter());
+registerAdapter(new OrcaRouterAdapter());
+registerAdapter(new OpenAICompatibleAdapter());
 
-// ── Database setup (never crash the server) ────────────────
 try {
   const db = createDb(config.databaseUrl);
 
   try {
     runMigrations(db);
   } catch (err) {
-    app.log.error({ err }, 'Migration failed — continuing with existing schema');
+    app.log.error({ err }, 'Migration failed - continuing with existing schema');
   }
 
   try {
@@ -88,25 +87,15 @@ try {
   });
 
   await registerAuth(app, db);
-
-  // ── Register gateway routes (new multi-provider) ──────────
   await registerGatewayRoutes(app, db);
-
-  // ── Keep legacy proxy routes for backward compatibility ────
   await registerProxyRoutes(app, db);
-
-  // ── Register admin routes ──────────────────────────────────
   await registerAdminRoutes(app, db);
   await registerAdminProviderRoutes(app, db);
-  await registerAdminModelRoutes(app, db);
 
-  // ── Start provider health monitoring ───────────────────────
   const healthService = new ProviderHealthService(db);
-  healthService.start(300_000); // Check every 5 minutes
+  healthService.start(300_000);
 
-  // ── Frontend static files ──────────────────────────────────
   const frontendDist = path.resolve(__dirname, '../../frontend/dist');
-
   const indexExists = fs.existsSync(path.join(frontendDist, 'index.html'));
 
   if (indexExists) {
@@ -124,7 +113,7 @@ try {
       }
     });
   } else {
-    app.log.warn('Frontend dist not found — serving API only');
+    app.log.warn('Frontend dist not found - serving API only');
     app.setNotFoundHandler((_request, reply) => {
       reply.status(404).send({ error: 'Not Found' });
     });

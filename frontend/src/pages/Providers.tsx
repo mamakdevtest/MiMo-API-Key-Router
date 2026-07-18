@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Server, Plus, CheckCircle2, XCircle, AlertTriangle, Clock, RefreshCw, Settings, Key, Database } from 'lucide-react';
+import { Server, Plus, CheckCircle2, XCircle, AlertTriangle, Clock, RefreshCw, Settings, Key, Database, Zap, Trash2 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
@@ -10,6 +10,38 @@ import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { api } from '@/lib/api';
 import { useToast } from '@/hooks/use-toast';
+
+type ProviderType = 'mimo' | 'featherless' | 'orcarouter' | 'openai_compatible';
+
+const TYPE_PRESETS: Record<ProviderType, { label: string; baseUrl: string; namePlaceholder: string; slugPlaceholder: string }> = {
+  mimo: { label: 'Xiaomi MiMo', baseUrl: 'https://api.xiaomimimo.com/v1', namePlaceholder: 'My MiMo Account', slugPlaceholder: 'mimo-main' },
+  featherless: { label: 'Featherless.ai', baseUrl: 'https://api.featherless.ai', namePlaceholder: 'My Featherless Account', slugPlaceholder: 'featherless-main' },
+  orcarouter: { label: 'OrcaRouter', baseUrl: 'https://api.orcarouter.ai/v1', namePlaceholder: 'My OrcaRouter Account', slugPlaceholder: 'orcarouter-main' },
+  openai_compatible: { label: 'Custom OpenAI-Compatible', baseUrl: '', namePlaceholder: 'My Custom Provider', slugPlaceholder: 'custom-provider' },
+};
+
+const TYPE_BADGES: Record<string, string> = { mimo: 'M', featherless: 'F', orcarouter: 'O', openai_compatible: 'C' };
+
+interface ValidationResult {
+  urlSafe: boolean;
+  modelsReachable: boolean;
+  authValid: boolean | null;
+  streamingWorks: boolean | null;
+  modelsCount: number | null;
+  capabilities: Record<string, boolean>;
+  errors: string[];
+  warnings: string[];
+}
+
+function ValidationRow({ ok, label, detail }: { ok: boolean; label: string; detail?: string }) {
+  return (
+    <div className="flex items-center gap-2">
+      {ok ? <CheckCircle2 className="w-4 h-4 text-green-500" /> : <XCircle className="w-4 h-4 text-red-500" />}
+      <span>{label}</span>
+      {detail && <span className="text-muted-foreground text-xs">({detail})</span>}
+    </div>
+  );
+}
 
 const HEALTH_COLORS: Record<string, string> = {
   healthy: 'text-green-500',
@@ -34,23 +66,35 @@ export function Providers() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
   const [showCreate, setShowCreate] = useState(false);
-  const [newProvider, setNewProvider] = useState({ type: 'featherless', name: '', slug: '', baseUrl: 'https://api.featherless.ai' });
+  const [newProvider, setNewProvider] = useState<{
+    type: ProviderType;
+    name: string;
+    slug: string;
+    baseUrl: string;
+    secret: string;
+    documentationUrl: string;
+    authHeader: string;
+    authPrefix: string;
+    modelsEndpoint: string;
+    chatCompletionsEndpoint: string;
+    timeoutMs: string;
+  }>({
+    type: 'featherless',
+    name: '',
+    slug: '',
+    baseUrl: TYPE_PRESETS.featherless.baseUrl,
+    secret: '',
+    documentationUrl: '',
+    authHeader: 'Authorization',
+    authPrefix: 'Bearer ',
+    modelsEndpoint: '/models',
+    chatCompletionsEndpoint: '/chat/completions',
+    timeoutMs: '',
+  });
+  const [validation, setValidation] = useState<ValidationResult | null>(null);
 
-  const providerPreset = useMemo(() => {
-    if (newProvider.type === 'mimo') {
-      return {
-        namePlaceholder: 'My MiMo Account',
-        slugPlaceholder: 'mimo-main',
-        baseUrl: 'https://api.xiaomimimo.com/v1',
-      };
-    }
-
-    return {
-      namePlaceholder: 'My Featherless Account',
-      slugPlaceholder: 'featherless-main',
-      baseUrl: 'https://api.featherless.ai',
-    };
-  }, [newProvider.type]);
+  const providerPreset = useMemo(() => TYPE_PRESETS[newProvider.type], [newProvider.type]);
+  const isCustom = newProvider.type === 'openai_compatible';
 
   const { data: providers, isLoading } = useQuery({
     queryKey: ['providers'],
@@ -58,15 +102,58 @@ export function Providers() {
     refetchInterval: 30000,
   });
 
+  const validateMutation = useMutation({
+    mutationFn: () => api.providers.validate({
+      baseUrl: newProvider.baseUrl,
+      secret: newProvider.secret || undefined,
+      authHeader: newProvider.authHeader || undefined,
+      authPrefix: newProvider.authPrefix || undefined,
+      modelsEndpoint: newProvider.modelsEndpoint || undefined,
+      chatCompletionsEndpoint: newProvider.chatCompletionsEndpoint || undefined,
+      timeoutMs: newProvider.timeoutMs ? parseInt(newProvider.timeoutMs, 10) : undefined,
+    }),
+    onSuccess: (result) => setValidation(result),
+    onError: (err: Error) => toast({ title: 'Validation failed', description: err.message }),
+  });
+
   const createMutation = useMutation({
-    mutationFn: (data: any) => api.providers.create(data),
+    mutationFn: async (data: any) => {
+      const created = await api.providers.create(data);
+      // If a secret was provided, attach it as the first credential
+      if (newProvider.secret) {
+        await api.providers.credentials.create(created.id, { name: 'Default', secret: newProvider.secret });
+      }
+      // Auto-sync models after creation
+      try { await api.providers.syncModels(created.id); } catch { /* optional */ }
+      return created;
+    },
     onSuccess: (created: any) => {
       queryClient.invalidateQueries({ queryKey: ['providers'] });
       setShowCreate(false);
-      toast({ title: 'Provider created', description: 'Now add provider-specific API keys for this account.' });
+      setValidation(null);
+      toast({ title: 'Provider created', description: 'Credentials added and models synced.' });
       navigate(`/providers/${created.id}`);
     },
     onError: (err: Error) => toast({ title: 'Error', description: err.message }),
+  });
+
+  const handleTypeChange = (type: ProviderType) => {
+    setNewProvider((p) => ({ ...p, type, baseUrl: TYPE_PRESETS[type].baseUrl }));
+    setValidation(null);
+  };
+
+  const buildCreatePayload = () => ({
+    type: newProvider.type,
+    name: newProvider.name,
+    slug: newProvider.slug,
+    baseUrl: newProvider.baseUrl,
+    documentationUrl: newProvider.documentationUrl || undefined,
+    authHeader: newProvider.authHeader || undefined,
+    authPrefix: newProvider.authPrefix || undefined,
+    modelsEndpoint: newProvider.modelsEndpoint || undefined,
+    chatCompletionsEndpoint: newProvider.chatCompletionsEndpoint || undefined,
+    timeoutMs: newProvider.timeoutMs ? parseInt(newProvider.timeoutMs, 10) : undefined,
+    capabilities: validation?.capabilities ?? undefined,
   });
 
   const toggleMutation = useMutation({
@@ -95,42 +182,103 @@ export function Providers() {
           <h1 className="text-3xl font-bold tracking-tight">Providers</h1>
           <p className="text-muted-foreground">Manage AI provider instances and credentials.</p>
         </div>
-        <Dialog open={showCreate} onOpenChange={setShowCreate}>
+        <Dialog open={showCreate} onOpenChange={(open) => { setShowCreate(open); if (!open) setValidation(null); }}>
           <DialogTrigger asChild>
             <Button><Plus className="w-4 h-4 mr-2" />Add Provider</Button>
           </DialogTrigger>
-          <DialogContent>
+          <DialogContent className="max-h-[90vh] overflow-y-auto">
             <DialogHeader><DialogTitle>Add Provider</DialogTitle></DialogHeader>
             <div className="space-y-4">
               <div>
-                <Label>Type</Label>
-                <select className="w-full mt-1 p-2 rounded-md bg-background border" value={newProvider.type}
-                  onChange={e => setNewProvider(p => ({
-                    ...p,
-                    type: e.target.value,
-                    baseUrl: e.target.value === 'mimo' ? 'https://api.xiaomimimo.com/v1' : 'https://api.featherless.ai',
-                  }))}>
-                  <option value="featherless">Featherless.ai</option>
-                  <option value="mimo">Xiaomi MiMo</option>
-                </select>
+                <Label>Provider Type</Label>
+                <div className="grid grid-cols-2 gap-2 mt-1">
+                  {(Object.keys(TYPE_PRESETS) as ProviderType[]).map((t) => (
+                    <button key={t} type="button" onClick={() => handleTypeChange(t)}
+                      className={`p-2 rounded-md border text-sm text-left transition-colors ${newProvider.type === t ? 'border-blue-500 bg-blue-500/10 text-blue-400' : 'border-white/10 hover:border-white/20'}`}>
+                      {TYPE_PRESETS[t].label}
+                    </button>
+                  ))}
+                </div>
               </div>
-              <div>
-                <Label>Name</Label>
-                <Input value={newProvider.name} onChange={e => setNewProvider(p => ({ ...p, name: e.target.value }))} placeholder={providerPreset.namePlaceholder} />
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <Label>Name</Label>
+                  <Input value={newProvider.name} onChange={e => setNewProvider(p => ({ ...p, name: e.target.value }))} placeholder={providerPreset.namePlaceholder} />
+                </div>
+                <div>
+                  <Label>Slug</Label>
+                  <Input value={newProvider.slug} onChange={e => setNewProvider(p => ({ ...p, slug: e.target.value }))} placeholder={providerPreset.slugPlaceholder} />
+                </div>
               </div>
-              <div>
-                <Label>Slug</Label>
-                <Input value={newProvider.slug} onChange={e => setNewProvider(p => ({ ...p, slug: e.target.value }))} placeholder={providerPreset.slugPlaceholder} />
-              </div>
+
               <div>
                 <Label>Base URL</Label>
-                <Input value={newProvider.baseUrl} onChange={e => setNewProvider(p => ({ ...p, baseUrl: e.target.value }))} />
+                <Input value={newProvider.baseUrl} onChange={e => { setNewProvider(p => ({ ...p, baseUrl: e.target.value })); setValidation(null); }} placeholder="https://api.example.com/v1" />
               </div>
-              <p className="text-xs text-muted-foreground">
-                Each provider keeps its own API key pool. After creation, you will be taken to that provider's key screen.
-              </p>
-              <Button onClick={() => createMutation.mutate(newProvider)} disabled={createMutation.isPending} className="w-full">
-                {createMutation.isPending ? 'Creating...' : 'Create Provider'}
+
+              <div>
+                <Label>API Key {isCustom ? '(optional, used for connection test)' : '(optional)'}</Label>
+                <Input type="password" value={newProvider.secret} onChange={e => setNewProvider(p => ({ ...p, secret: e.target.value }))} placeholder="sk-..." />
+              </div>
+
+              {isCustom && (
+                <>
+                  <div>
+                    <Label>Documentation URL (optional)</Label>
+                    <Input value={newProvider.documentationUrl} onChange={e => setNewProvider(p => ({ ...p, documentationUrl: e.target.value }))} placeholder="https://docs.example.com" />
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <Label>Auth Header</Label>
+                      <Input value={newProvider.authHeader} onChange={e => setNewProvider(p => ({ ...p, authHeader: e.target.value }))} />
+                    </div>
+                    <div>
+                      <Label>Auth Prefix</Label>
+                      <Input value={newProvider.authPrefix} onChange={e => setNewProvider(p => ({ ...p, authPrefix: e.target.value }))} />
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <Label>Models Endpoint</Label>
+                      <Input value={newProvider.modelsEndpoint} onChange={e => setNewProvider(p => ({ ...p, modelsEndpoint: e.target.value }))} />
+                    </div>
+                    <div>
+                      <Label>Chat Completions Endpoint</Label>
+                      <Input value={newProvider.chatCompletionsEndpoint} onChange={e => setNewProvider(p => ({ ...p, chatCompletionsEndpoint: e.target.value }))} />
+                    </div>
+                  </div>
+                  <div>
+                    <Label>Timeout (ms, optional)</Label>
+                    <Input value={newProvider.timeoutMs} onChange={e => setNewProvider(p => ({ ...p, timeoutMs: e.target.value }))} placeholder="15000" />
+                  </div>
+                </>
+              )}
+
+              {/* Inline connection test */}
+              <div className="border-t border-white/10 pt-3">
+                <Button variant="outline" onClick={() => validateMutation.mutate()} disabled={!newProvider.baseUrl || validateMutation.isPending} className="w-full">
+                  <Zap className={`w-4 h-4 mr-2 ${validateMutation.isPending ? 'animate-pulse' : ''}`} />
+                  {validateMutation.isPending ? 'Testing connection...' : 'Test Connection'}
+                </Button>
+
+                {validation && (
+                  <div className="mt-3 space-y-1.5 text-sm">
+                    <ValidationRow ok={validation.urlSafe} label="URL is safe" />
+                    <ValidationRow ok={validation.modelsReachable} label="Models endpoint reachable" detail={validation.modelsCount != null ? `${validation.modelsCount} models` : undefined} />
+                    {validation.authValid !== null && <ValidationRow ok={validation.authValid} label="Authentication valid" />}
+                    {validation.streamingWorks !== null && <ValidationRow ok={validation.streamingWorks} label="Streaming works" />}
+                    {validation.errors.map((e, i) => <p key={i} className="text-red-400 text-xs flex items-center gap-1"><XCircle className="w-3 h-3" />{e}</p>)}
+                    {validation.warnings.map((w, i) => <p key={i} className="text-yellow-400 text-xs flex items-center gap-1"><AlertTriangle className="w-3 h-3" />{w}</p>)}
+                  </div>
+                )}
+              </div>
+
+              <Button
+                onClick={() => createMutation.mutate(buildCreatePayload())}
+                disabled={createMutation.isPending || !newProvider.name || !newProvider.slug || !newProvider.baseUrl}
+                className="w-full">
+                {createMutation.isPending ? 'Creating...' : 'Create Provider + Sync Models'}
               </Button>
             </div>
           </DialogContent>
@@ -146,7 +294,7 @@ export function Providers() {
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-3">
                     <div className={`w-10 h-10 rounded-xl flex items-center justify-center text-sm font-bold ${p.enabled ? 'bg-blue-500/15 text-blue-400' : 'bg-gray-500/15 text-gray-400'}`}>
-                      {p.type === 'featherless' ? 'F' : p.type === 'mimo' ? 'M' : '?'}
+                      {TYPE_BADGES[p.type] ?? '?'}
                     </div>
                     <div>
                       <CardTitle className="text-base">{p.name}</CardTitle>

@@ -5,22 +5,37 @@
 
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
-import { eq } from 'drizzle-orm';
+import { eq, and, asc, like, or, sql } from 'drizzle-orm';
 import { ProviderService } from '../providers/provider-service.js';
 import { ModelSyncService } from '../services/model-sync-service.js';
+import { ProviderValidationService } from '../services/provider-validation-service.js';
 import { getAdapterSafe } from '../providers/registry.js';
-import { providers, providerCredentials, providerModels } from '../db/schema.js';
+import { providers, providerModels } from '../db/schema.js';
 import type { Db } from '../db/index.js';
-import type { ProviderType, BillingMode } from '../providers/types.js';
+import { buildPublicModelId } from '../providers/public-model-id.js';
+import { validateProviderUrl } from '../security/url-validator.js';
+import { serializeCustomHeaders, maskCustomHeaders } from '../security/custom-headers.js';
+
+const customHeadersSchema = z.record(z.string(), z.string()).optional();
 
 const createProviderSchema = z.object({
-  type: z.enum(['mimo', 'featherless']),
+  type: z.enum(['mimo', 'featherless', 'orcarouter', 'openai_compatible']),
   name: z.string().min(1).max(100),
   slug: z.string().min(1).max(50).regex(/^[a-z0-9-]+$/),
   baseUrl: z.string().url(),
   billingMode: z.enum(['subscription', 'per_request', 'unknown']).optional(),
   priority: z.number().int().min(0).optional(),
   configJson: z.string().optional(),
+  documentationUrl: z.string().url().optional().nullable(),
+  authHeader: z.string().min(1).max(100).optional(),
+  authPrefix: z.string().max(50).optional(),
+  modelsEndpoint: z.string().max(200).optional(),
+  chatCompletionsEndpoint: z.string().max(200).optional(),
+  embeddingsEndpoint: z.string().max(200).optional().nullable(),
+  customHeaders: customHeadersSchema,
+  timeoutMs: z.number().int().min(1000).max(120000).optional().nullable(),
+  healthCheckEndpoint: z.string().max(200).optional().nullable(),
+  capabilities: z.record(z.string(), z.boolean()).optional().nullable(),
 });
 
 const updateProviderSchema = z.object({
@@ -31,6 +46,27 @@ const updateProviderSchema = z.object({
   routingWeight: z.number().int().min(0).optional(),
   billingMode: z.enum(['subscription', 'per_request', 'unknown']).optional(),
   configJson: z.string().optional(),
+  documentationUrl: z.string().url().optional().nullable(),
+  authHeader: z.string().min(1).max(100).optional(),
+  authPrefix: z.string().max(50).optional(),
+  modelsEndpoint: z.string().max(200).optional(),
+  chatCompletionsEndpoint: z.string().max(200).optional(),
+  embeddingsEndpoint: z.string().max(200).optional().nullable(),
+  customHeaders: customHeadersSchema,
+  timeoutMs: z.number().int().min(1000).max(120000).optional().nullable(),
+  healthCheckEndpoint: z.string().max(200).optional().nullable(),
+  capabilities: z.record(z.string(), z.boolean()).optional().nullable(),
+});
+
+const validateProviderSchema = z.object({
+  baseUrl: z.string().url(),
+  authHeader: z.string().min(1).max(100).optional(),
+  authPrefix: z.string().max(50).optional(),
+  modelsEndpoint: z.string().max(200).optional(),
+  chatCompletionsEndpoint: z.string().max(200).optional(),
+  secret: z.string().optional(),
+  customHeaders: customHeadersSchema,
+  timeoutMs: z.number().int().min(1000).max(120000).optional(),
 });
 
 const createCredentialSchema = z.object({
@@ -50,13 +86,29 @@ const bulkCreateCredentialsSchema = z.object({
 export async function registerAdminProviderRoutes(app: FastifyInstance, db: Db) {
   const providerService = new ProviderService(db);
   const modelSyncService = new ModelSyncService(db);
+  const validationService = new ProviderValidationService();
 
-  // ── Provider CRUD ──────────────────────────────────────────
+  function toPublicProvider(p: ReturnType<typeof providerService.list> extends Promise<Array<infer T>> ? T : never) {
+    return {
+      ...p,
+      customHeaders: maskCustomHeaders(p.customHeadersJson),
+      customHeadersJson: undefined,
+    };
+  }
+
+  // Validate a provider connection before saving (SSRF → models → auth → streaming).
+  app.post('/admin/providers/validate', { config: { rateLimit: { max: 10, timeWindow: '1 minute' } } }, async (request, reply) => {
+    const parsed = validateProviderSchema.safeParse(request.body);
+    if (!parsed.success) return reply.status(400).send({ error: 'Bad Request', message: parsed.error.message });
+
+    const result = await validationService.validate(parsed.data);
+    return reply.send(result);
+  });
 
   app.get('/admin/providers', async (_request, reply) => {
     const list = await providerService.list();
     const enriched = await Promise.all(list.map(async (p) => ({
-      ...p,
+      ...toPublicProvider(p),
       credentialCount: await providerService.getActiveCredentialCount(p.id),
       modelCount: await providerService.getModelCount(p.id),
     })));
@@ -70,8 +122,19 @@ export async function registerAdminProviderRoutes(app: FastifyInstance, db: Db) 
     const existing = await providerService.getBySlug(parsed.data.slug);
     if (existing) return reply.status(409).send({ error: 'Conflict', message: 'Slug already exists' });
 
-    const provider = await providerService.create(parsed.data);
-    return reply.status(201).send(provider);
+    // SSRF check on custom base URLs
+    const urlCheck = await validateProviderUrl(parsed.data.baseUrl);
+    if (!urlCheck.safe) {
+      return reply.status(400).send({ error: 'Invalid Base URL', message: urlCheck.error });
+    }
+
+    const { customHeaders, capabilities, ...rest } = parsed.data;
+    const provider = await providerService.create({
+      ...rest,
+      customHeadersJson: serializeCustomHeaders(customHeaders),
+      capabilitiesJson: capabilities ? JSON.stringify(capabilities) : null,
+    });
+    return reply.status(201).send(toPublicProvider(provider));
   });
 
   app.get('/admin/providers/:id', async (request, reply) => {
@@ -81,7 +144,7 @@ export async function registerAdminProviderRoutes(app: FastifyInstance, db: Db) 
 
     const credCount = await providerService.getActiveCredentialCount(id);
     const modelCount = await providerService.getModelCount(id);
-    return reply.send({ ...provider, credentialCount: credCount, modelCount });
+    return reply.send({ ...toPublicProvider(provider), credentialCount: credCount, modelCount });
   });
 
   app.patch('/admin/providers/:id', async (request, reply) => {
@@ -92,7 +155,19 @@ export async function registerAdminProviderRoutes(app: FastifyInstance, db: Db) 
     const provider = await providerService.getById(id);
     if (!provider) return reply.status(404).send({ error: 'Not Found' });
 
-    await providerService.update(id, parsed.data);
+    if (parsed.data.baseUrl) {
+      const urlCheck = await validateProviderUrl(parsed.data.baseUrl);
+      if (!urlCheck.safe) {
+        return reply.status(400).send({ error: 'Invalid Base URL', message: urlCheck.error });
+      }
+    }
+
+    const { customHeaders, capabilities, ...rest } = parsed.data;
+    await providerService.update(id, {
+      ...rest,
+      ...(customHeaders !== undefined ? { customHeadersJson: serializeCustomHeaders(customHeaders) } : {}),
+      ...(capabilities !== undefined ? { capabilitiesJson: capabilities ? JSON.stringify(capabilities) : null } : {}),
+    });
     return reply.send({ success: true });
   });
 
@@ -114,16 +189,12 @@ export async function registerAdminProviderRoutes(app: FastifyInstance, db: Db) 
     return reply.send({ success: true });
   });
 
-  // ── Provider actions ───────────────────────────────────────
-
-  app.post('/admin/providers/:id/test', async (request, reply) => {
+  app.post('/admin/providers/:id/test', { config: { rateLimit: { max: 20, timeWindow: '1 minute' } } }, async (request, reply) => {
     const { id } = request.params as { id: string };
-    const result = await providerService.testCredential(id, ''); // Will use first available
-    // Actually test with a real credential
     const cred = await providerService.selectCredential(id);
     if (!cred) return reply.send({ success: false, message: 'No active credentials' });
-    const testResult = await providerService.testCredential(id, cred.id);
-    return reply.send(testResult);
+    const result = await providerService.testCredential(id, cred.id);
+    return reply.send(result);
   });
 
   app.post('/admin/providers/:id/sync-models', async (request, reply) => {
@@ -169,8 +240,6 @@ export async function registerAdminProviderRoutes(app: FastifyInstance, db: Db) 
       return reply.send({ error: (err as Error).message });
     }
   });
-
-  // ── Credential CRUD ────────────────────────────────────────
 
   app.get('/admin/providers/:id/credentials', async (request, reply) => {
     const { id } = request.params as { id: string };
@@ -223,10 +292,7 @@ export async function registerAdminProviderRoutes(app: FastifyInstance, db: Db) 
       nextPriority += 1;
     }
 
-    return reply.status(201).send({
-      success: true,
-      count: parsed.data.credentials.length,
-    });
+    return reply.status(201).send({ success: true, count: parsed.data.credentials.length });
   });
 
   app.patch('/admin/providers/:id/credentials/:credentialId', async (request, reply) => {
@@ -266,45 +332,86 @@ export async function registerAdminProviderRoutes(app: FastifyInstance, db: Db) 
     return reply.send({ success: true });
   });
 
-  // ── Provider models ────────────────────────────────────────
-
   app.get('/admin/providers/:id/models', async (request, reply) => {
     const { id } = request.params as { id: string };
     const { search, limit, offset } = request.query as { search?: string; limit?: string; offset?: string };
 
-    let query = db.select().from(providerModels).where(eq(providerModels.providerId, id));
-    // Simple pagination
-    const rows = await query.limit(parseInt(limit || '100')).offset(parseInt(offset || '0'));
-    return reply.send(rows);
-  });
-
-  // ── Model catalog (all providers) ──────────────────────────
-
-  app.get('/admin/model-catalog', async (request, reply) => {
-    const { page, perPage, providerId, search, capability } = request.query as {
-      page?: string; perPage?: string; providerId?: string; search?: string; capability?: string;
-    };
-
-    const pageNum = parseInt(page || '1');
-    const perPageNum = Math.min(parseInt(perPage || '50'), 200);
-    const offset = (pageNum - 1) * perPageNum;
-
-    let whereClause = '';
-    const conditions: string[] = [];
-
-    // This is a simplified query — in production you'd use Drizzle's where builder
     const rows = await db.query.providerModels.findMany({
-      limit: perPageNum,
-      offset,
+      where: search
+        ? and(eq(providerModels.providerId, id), like(providerModels.upstreamModelId, `%${search}%`))
+        : eq(providerModels.providerId, id),
+      limit: parseInt(limit || '100', 10),
+      offset: parseInt(offset || '0', 10),
+      orderBy: [asc(providerModels.upstreamModelId)],
     });
 
-    const total = await db.select({ count: eq(providerModels.id, providerModels.id) }).from(providerModels);
+    const provider = await providerService.getById(id);
+    return reply.send(rows.map((row) => ({
+      ...row,
+      publicModelId: provider ? buildPublicModelId(provider, row.upstreamModelId) : row.upstreamModelId,
+    })));
+  });
+
+  app.get('/admin/model-catalog', async (request, reply) => {
+    const { page, perPage, providerId, search } = request.query as {
+      page?: string; perPage?: string; providerId?: string; search?: string;
+    };
+
+    const pageNum = parseInt(page || '1', 10);
+    const perPageNum = Math.min(parseInt(perPage || '50', 10), 200);
+    const offset = (pageNum - 1) * perPageNum;
+
+    const conditions = [];
+    if (providerId) conditions.push(eq(providerModels.providerId, providerId));
+    if (search) {
+      conditions.push(or(
+        like(providerModels.upstreamModelId, `%${search}%`),
+        like(providerModels.displayName, `%${search}%`),
+        like(providers.slug, `%${search}%`)
+      ));
+    }
+
+    const whereClause = conditions.length === 0 ? undefined : conditions.length === 1 ? conditions[0] : and(...conditions);
+
+    const rows = await db
+      .select({
+        id: providerModels.id,
+        providerId: providerModels.providerId,
+        providerSlug: providers.slug,
+        providerName: providers.name,
+        providerType: providers.type,
+        upstreamModelId: providerModels.upstreamModelId,
+        displayName: providerModels.displayName,
+        modelClass: providerModels.modelClass,
+        status: providerModels.status,
+        contextLength: providerModels.contextLength,
+        supportsChat: providerModels.supportsChat,
+        supportsTools: providerModels.supportsTools,
+        supportsVision: providerModels.supportsVision,
+        supportsEmbeddings: providerModels.supportsEmbeddings,
+        lastSyncedAt: providerModels.lastSyncedAt,
+      })
+      .from(providerModels)
+      .innerJoin(providers, eq(providerModels.providerId, providers.id))
+      .where(whereClause)
+      .orderBy(asc(providers.priority), asc(providerModels.upstreamModelId))
+      .limit(perPageNum)
+      .offset(offset);
+
+    const totalRows = await db
+      .select({ count: sql<number>`count(*)` })
+      .from(providerModels)
+      .innerJoin(providers, eq(providerModels.providerId, providers.id))
+      .where(whereClause);
 
     return reply.send({
-      models: rows,
+      models: rows.map((row) => ({
+        ...row,
+        publicModelId: buildPublicModelId({ slug: row.providerSlug }, row.upstreamModelId),
+      })),
       page: pageNum,
       perPage: perPageNum,
-      total: rows.length,
+      total: totalRows[0]?.count ?? rows.length,
     });
   });
 }

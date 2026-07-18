@@ -19,19 +19,16 @@ const statusColors: Record<string, string> = {
 };
 
 function getProviderCopy(type?: string) {
-  if (type === 'mimo') {
-    return {
-      title: 'MiMo',
-      placeholder: 'sk-mimo-...',
-      baseUrlHint: 'https://api.xiaomimimo.com/v1',
-    };
+  switch (type) {
+    case 'mimo':
+      return { title: 'MiMo', placeholder: 'sk-mimo-...', baseUrlHint: 'https://api.xiaomimimo.com/v1' };
+    case 'orcarouter':
+      return { title: 'OrcaRouter', placeholder: 'sk-orca-...', baseUrlHint: 'https://api.orcarouter.ai/v1' };
+    case 'openai_compatible':
+      return { title: 'Custom', placeholder: 'sk-...', baseUrlHint: 'your provider base URL' };
+    default:
+      return { title: 'Featherless', placeholder: 'sk-featherless-...', baseUrlHint: 'https://api.featherless.ai' };
   }
-
-  return {
-    title: 'Featherless',
-    placeholder: 'sk-featherless-...',
-    baseUrlHint: 'https://api.featherless.ai',
-  };
 }
 
 function parseBulkCredentials(input: string) {
@@ -231,6 +228,82 @@ export function ProviderDetails() {
           </CardContent>
         </Card>
       </div>
+
+      {/* Extended provider configuration */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Connection Configuration</CardTitle>
+          <CardDescription>Endpoints, authentication and documentation for this provider</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <dl className="grid gap-x-6 gap-y-3 md:grid-cols-2 lg:grid-cols-3 text-sm">
+            {provider.documentationUrl && (
+              <div>
+                <dt className="text-muted-foreground">Documentation</dt>
+                <dd><a href={provider.documentationUrl} target="_blank" rel="noreferrer" className="text-blue-400 hover:underline break-all">{provider.documentationUrl}</a></dd>
+              </div>
+            )}
+            <div>
+              <dt className="text-muted-foreground">Auth Header</dt>
+              <dd className="font-mono text-xs">{provider.authHeader}: {provider.authPrefix}&lt;key&gt;</dd>
+            </div>
+            <div>
+              <dt className="text-muted-foreground">Models Endpoint</dt>
+              <dd className="font-mono text-xs">{provider.modelsEndpoint}</dd>
+            </div>
+            <div>
+              <dt className="text-muted-foreground">Chat Completions Endpoint</dt>
+              <dd className="font-mono text-xs">{provider.chatCompletionsEndpoint}</dd>
+            </div>
+            {provider.embeddingsEndpoint && (
+              <div>
+                <dt className="text-muted-foreground">Embeddings Endpoint</dt>
+                <dd className="font-mono text-xs">{provider.embeddingsEndpoint}</dd>
+              </div>
+            )}
+            {provider.timeoutMs && (
+              <div>
+                <dt className="text-muted-foreground">Timeout</dt>
+                <dd>{provider.timeoutMs} ms</dd>
+              </div>
+            )}
+            {provider.healthCheckEndpoint && (
+              <div>
+                <dt className="text-muted-foreground">Health Check Endpoint</dt>
+                <dd className="font-mono text-xs">{provider.healthCheckEndpoint}</dd>
+              </div>
+            )}
+            {provider.customHeaders && Object.keys(provider.customHeaders).length > 0 && (
+              <div>
+                <dt className="text-muted-foreground">Custom Headers</dt>
+                <dd className="font-mono text-xs space-y-0.5">
+                  {Object.entries(provider.customHeaders).map(([k, v]) => (
+                    <div key={k}>{k}: {String(v)}</div>
+                  ))}
+                </dd>
+              </div>
+            )}
+          </dl>
+
+          {(() => {
+            let caps: Record<string, boolean> | null = null;
+            try { caps = provider.capabilitiesJson ? JSON.parse(provider.capabilitiesJson) : null; } catch { caps = null; }
+            if (!caps) return null;
+            return (
+              <div className="mt-4 pt-4 border-t border-white/10">
+                <p className="text-muted-foreground text-sm mb-2">Detected Capabilities</p>
+                <div className="flex flex-wrap gap-2">
+                  {Object.entries(caps).map(([key, val]) => (
+                    <span key={key} className={`text-xs px-2 py-1 rounded-md ${val ? 'bg-green-500/10 text-green-400' : 'bg-gray-500/10 text-gray-500 line-through'}`}>
+                      {key.replace(/^supports/, '')}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            );
+          })()}
+        </CardContent>
+      </Card>
 
       <Card>
         <CardHeader className="flex flex-row items-center justify-between">

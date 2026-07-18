@@ -7,10 +7,11 @@ import { registerProxyRoutes } from '../routes/proxy.js';
 import { registerAdminRoutes } from '../routes/admin.js';
 import { registerGatewayRoutes } from '../routes/gateway.js';
 import { registerAdminProviderRoutes } from '../routes/admin-providers.js';
-import { registerAdminModelRoutes } from '../routes/admin-routes.js';
 import { registerAdapter } from '../providers/registry.js';
 import { MiMoAdapter } from '../providers/adapters/mimo.adapter.js';
 import { FeatherlessAdapter } from '../providers/adapters/featherless.adapter.js';
+import { OrcaRouterAdapter } from '../providers/adapters/orcarouter.adapter.js';
+import { OpenAICompatibleAdapter } from '../providers/adapters/openai-compatible.adapter.js';
 import { setupAdmin } from '../services/setup.js';
 import { config } from '../config.js';
 import path from 'node:path';
@@ -19,9 +20,10 @@ import { fileURLToPath } from 'node:url';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 export async function buildTestApp() {
-  // Register provider adapters (same as production)
   registerAdapter(new MiMoAdapter());
   registerAdapter(new FeatherlessAdapter());
+  registerAdapter(new OrcaRouterAdapter());
+  registerAdapter(new OpenAICompatibleAdapter());
 
   const db = createDb(':memory:');
   migrate(db, { migrationsFolder: path.resolve(__dirname, '../../drizzle') });
@@ -38,7 +40,6 @@ export async function buildTestApp() {
   await registerProxyRoutes(app, db);
   await registerAdminRoutes(app, db);
   await registerAdminProviderRoutes(app, db);
-  await registerAdminModelRoutes(app, db);
 
   return { app, db, gatewayKey: gatewayKey! };
 }

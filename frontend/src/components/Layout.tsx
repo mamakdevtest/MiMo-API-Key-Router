@@ -1,5 +1,5 @@
 import { Link, useLocation } from 'react-router-dom';
-import { LayoutDashboard, KeyRound, Settings, LogOut, BookOpen, ScrollText, Timer, Server, GitBranch, Database } from 'lucide-react';
+import { LayoutDashboard, KeyRound, Settings, LogOut, BookOpen, ScrollText, Server, Database } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useAuth } from '@/hooks/useAuth';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -12,7 +12,6 @@ export function Layout({ children }: { children: React.ReactNode }) {
     { path: '/', label: 'Overview', icon: LayoutDashboard },
     { path: '/providers', label: 'Providers', icon: Server },
     { path: '/model-catalog', label: 'Model Catalog', icon: Database },
-    { path: '/routes', label: 'Routes', icon: GitBranch },
     { path: '/keys', label: 'Router Keys', icon: KeyRound },
     { path: '/requests', label: 'Requests', icon: ScrollText },
     { path: '/settings', label: 'Settings', icon: Settings },
@@ -49,7 +48,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
                     <motion.div
                       layoutId="active-nav"
                       className="absolute inset-0 bg-blue-500/10 rounded-lg border border-blue-500/20"
-                      transition={{ type: "spring", bounce: 0.2, duration: 0.6 }}
+                      transition={{ type: 'spring', bounce: 0.2, duration: 0.6 }}
                     />
                   )}
                   <Icon className="w-4 h-4 relative z-10" />
@@ -70,7 +69,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           exit={{ opacity: 0, y: -20 }}
-          transition={{ duration: 0.3, ease: "easeOut" }}
+          transition={{ duration: 0.3, ease: 'easeOut' }}
           className="container mx-auto px-4 py-8 flex-1"
         >
           {children}

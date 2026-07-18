@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(ls -la \"f:\\\\_Work\\\\_MamakGames\\\\MamakHub\\\\projects\\\\MiMo-API-Key-Router\\\\\" 2>/dev/null || echo \"Path not accessible, trying alternate approach\")",
+      "Read(//f/_Work/_MamakGames/MamakHub/projects/MiMo-API-Key-Router\" 2>/dev/**)",
+      "Bash(ls -la \"f:\\\\_Work\\\\_MamakGames\\\\MamakHub\\\\projects\\\\MiMo-API-Key-Router\\\\\" 2>/dev/null || echo \"Not a standard path format, trying alternative...\")",
+      "Bash(git -C /f/_Work/_MamakGames/MamakHub/projects/MiMo-API-Key-Router log --oneline -20)",
+      "Bash(npm test *)"
+    ]
+  }
+}
