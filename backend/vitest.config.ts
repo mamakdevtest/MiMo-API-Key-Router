@@ -9,7 +9,7 @@ export default defineConfig({
   },
   resolve: {
     alias: {
-      '@mimo/shared': path.resolve(__dirname, '../shared/src/index.ts'),
+      '@api-router/shared': path.resolve(__dirname, '../shared/src/index.ts'),
     },
   },
 });

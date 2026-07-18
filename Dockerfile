@@ -3,7 +3,7 @@
 # ============================================================
 # Stage 1: Install ALL dependencies (including dev for building)
 # ============================================================
-FROM node:20-alpine AS deps
+FROM node:22-alpine AS deps
 RUN apk add --no-cache libc6-compat python3 make g++
 WORKDIR /app
 
@@ -20,7 +20,7 @@ RUN npm ci --include=dev
 # ============================================================
 # Stage 2: Build shared → frontend → backend
 # ============================================================
-FROM node:20-alpine AS builder
+FROM node:22-alpine AS builder
 RUN apk add --no-cache libc6-compat python3 make g++
 WORKDIR /app
 
@@ -44,17 +44,18 @@ RUN npm prune --omit=dev
 # ============================================================
 # Stage 3: Production runner (minimal image)
 # ============================================================
-FROM node:20-alpine AS runner
-RUN apk add --no-cache curl
+FROM node:22-alpine AS runner
+RUN apk add --no-cache curl su-exec
 WORKDIR /app
 
 ENV NODE_ENV=production
 ENV PORT=4000
-ENV DATABASE_URL=file:/data/mimo-router.sqlite
+ENV DATABASE_URL=file:/data/api-router.sqlite
 
-# Create non-root user
+# Create a non-root runtime user. Docker volumes are mounted after image build,
+# so their ownership is corrected by the entrypoint before Node starts.
 RUN addgroup --system --gid 1001 nodejs && adduser --system --uid 1001 router
-RUN mkdir -p /data && chown router:nodejs /data
+RUN mkdir -p /data /app/data && chown router:nodejs /data /app/data
 
 # Copy only production artifacts
 COPY --from=builder --chown=router:nodejs /app/backend/dist ./backend/dist
@@ -66,12 +67,12 @@ COPY --from=builder --chown=router:nodejs /app/shared/dist ./shared/dist
 COPY --from=builder --chown=router:nodejs /app/node_modules ./node_modules
 COPY --from=builder --chown=router:nodejs /app/package.json ./package.json
 COPY --chown=router:nodejs healthcheck.sh ./healthcheck.sh
-RUN chmod +x ./healthcheck.sh
-
-USER router
+COPY docker-entrypoint.sh ./docker-entrypoint.sh
+RUN chmod +x ./healthcheck.sh ./docker-entrypoint.sh
 
 EXPOSE 4000
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 CMD ["./healthcheck.sh"]
 
+ENTRYPOINT ["./docker-entrypoint.sh"]
 CMD ["node", "backend/dist/index.js"]

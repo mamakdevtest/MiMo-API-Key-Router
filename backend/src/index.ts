@@ -41,17 +41,8 @@ registerAdapter(new OpenAICompatibleAdapter());
 try {
   const db = createDb(config.databaseUrl);
 
-  try {
-    runMigrations(db);
-  } catch (err) {
-    app.log.error({ err }, 'Migration failed - continuing with existing schema');
-  }
-
-  try {
-    await setupAdmin(db);
-  } catch (err) {
-    app.log.error({ err }, 'Setup admin failed');
-  }
+  runMigrations(db);
+  await setupAdmin(db);
 
   await app.register(cors, {
     origin: config.nodeEnv === 'development',
@@ -71,7 +62,6 @@ try {
   });
 
   await app.register(cookie, {
-    secret: config.sessionSecret,
     parseOptions: {
       httpOnly: true,
       secure: config.cookieSecure,

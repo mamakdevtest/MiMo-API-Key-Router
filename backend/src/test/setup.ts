@@ -1,6 +1,5 @@
-process.env.APP_ENCRYPTION_KEY = 'test-encryption-key-32-chars-long!!';
 process.env.INITIAL_ADMIN_PASSWORD = 'test-admin-password';
-process.env.SESSION_SECRET = 'test-session-secret-32-chars-long!!';
+process.env.GATEWAY_KEY = 'test-gateway-key-at-least-32-characters-long';
 process.env.NODE_ENV = 'test';
 process.env.DATABASE_URL = ':memory:';
 process.env.TRUST_PROXY = 'false';

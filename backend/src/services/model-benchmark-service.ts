@@ -11,6 +11,7 @@ import { getAdapter } from '../providers/registry.js';
 import { ProviderService } from '../providers/provider-service.js';
 import { buildPublicModelId } from '../providers/public-model-id.js';
 import type { CanonicalRequest, DecryptedProviderCredential, ProviderInstance } from '../providers/types.js';
+import { streamManager } from './stream-manager.js';
 
 export interface ModelBenchmarkResult {
   upstreamModelId: string;
@@ -102,8 +103,12 @@ export class ModelBenchmarkService {
     const worker = async () => {
       while (nextIndex < models.length) {
         const model = models[nextIndex++];
+        const flowId = crypto.randomUUID();
+        this.publishBenchmarkStarted(flowId, provider, model.upstreamModelId, credential);
         const result = await this.benchmarkModel(provider, credential, model.upstreamModelId);
+        result.credentialName = credential.name;
         await this.persistResult(model.id, result);
+        this.publishBenchmarkCompleted(flowId, provider, result, credential.name);
         results.push(result);
         onProgress?.(models.length, results.length, result);
       }
@@ -194,9 +199,15 @@ export class ModelBenchmarkService {
       }
 
       let result: ModelBenchmarkResult | null = null;
+      if (!credential) {
+        throw new Error('No active credential is available for this provider');
+      }
+      const flowId = crypto.randomUUID();
+      this.publishBenchmarkStarted(flowId, provider, model.upstreamModelId, credential);
       const rateLimitedCredentialIds = new Set<string>();
       let rateLimitedPass = 1;
       while (credential) {
+        this.publishBenchmarkCredentialSelected(flowId, provider, model.upstreamModelId, credential, rateLimitedPass);
         result = await this.benchmarkModel(provider, credential, model.upstreamModelId);
         result.credentialName = credential.name;
 
@@ -259,6 +270,7 @@ export class ModelBenchmarkService {
         return;
       }
       await this.persistResult(model.id, result);
+      this.publishBenchmarkCompleted(flowId, provider, result, result.credentialName);
       job.results.push(result);
       job.completed += 1;
       job.summary = summarize(job.results, job.total);
@@ -359,6 +371,65 @@ export class ModelBenchmarkService {
         errorMessage: result.error?.slice(0, 160) ?? null,
         testedAt: now,
       },
+    });
+  }
+
+  private publishBenchmarkStarted(
+    requestId: string,
+    provider: ProviderInstance,
+    upstreamModelId: string,
+    credential: DecryptedProviderCredential,
+  ) {
+    streamManager.broadcast({
+      type: 'benchmark_started',
+      flowType: 'benchmark',
+      requestId,
+      providerName: provider.name,
+      model: buildPublicModelId(provider, upstreamModelId),
+      label: credential.name,
+      attempt: 1,
+      timestamp: Date.now(),
+    });
+  }
+
+  private publishBenchmarkCredentialSelected(
+    requestId: string,
+    provider: ProviderInstance,
+    upstreamModelId: string,
+    credential: DecryptedProviderCredential,
+    attempt: number,
+  ) {
+    streamManager.broadcast({
+      type: 'key_selected',
+      flowType: 'benchmark',
+      requestId,
+      providerName: provider.name,
+      model: buildPublicModelId(provider, upstreamModelId),
+      label: credential.name,
+      attempt,
+      timestamp: Date.now(),
+    });
+  }
+
+  private publishBenchmarkCompleted(
+    requestId: string,
+    provider: ProviderInstance,
+    result: ModelBenchmarkResult,
+    credentialName?: string,
+  ) {
+    streamManager.broadcast({
+      type: 'benchmark_completed',
+      flowType: 'benchmark',
+      requestId,
+      providerName: provider.name,
+      model: result.publicModelId,
+      label: credentialName,
+      success: result.status === 'success',
+      statusCode: result.httpStatus ?? undefined,
+      latencyMs: result.latencyMs,
+      errorMessage: result.error,
+      attempt: 1,
+      timestamp: Date.now(),
     });
   }
 }

@@ -17,13 +17,13 @@ The configured database has no settings row. Set `INITIAL_ADMIN_PASSWORD`, resta
 
 ## `EACCES: permission denied, mkdir '/data'`
 
-`/data` is the Docker container's persistent-volume path, not a local development directory. For `npm run dev`, set this in `.env`:
+`/data` is the Docker container's persistent-volume path, not a local development directory. The container entrypoint repairs the mounted volume ownership before dropping to the non-root application user. For `npm run dev`, set this in `.env`:
 
 ```text
-DATABASE_URL=file:./data/mimo-router.sqlite
+DATABASE_URL=file:./data/api-router.sqlite
 ```
 
-Restart the backend. The router creates `./data` in the repository automatically. Keep `file:/data/mimo-router.sqlite` only for Docker/Coolify, where `/data` is mounted and writable by the container user.
+Restart the backend. The router creates `./data` in the repository automatically. Keep `file:/data/api-router.sqlite` only for Docker/Coolify, where `/data` is mounted and writable by the container user. If a deployment still logs `mkdir './data'`, remove its stale `DATABASE_URL` value in Coolify or set it explicitly to `file:/data/api-router.sqlite`.
 
 ## Vite proxy reports `ECONNREFUSED` for `/admin/me`
 

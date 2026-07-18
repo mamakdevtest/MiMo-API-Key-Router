@@ -1,10 +1,11 @@
 import type { FastifyInstance } from 'fastify';
-import { eq, asc, sql, count, gte, and } from 'drizzle-orm';
+import { eq, asc, desc, sql, count, gte, and, inArray } from 'drizzle-orm';
 import { z } from 'zod';
 import { config } from '../config.js';
-import { encrypt, maskKey, hashGatewayKey, generateSecureToken } from '../crypto/index.js';
-import { apiKeys, settings, requestLogs, gatewayCredentials, providerCredentials, providers, providerModels, modelBenchmarkResults } from '../db/schema.js';
+import { encrypt, maskKey } from '../crypto/index.js';
+import { apiKeys, settings, requestLogs, requestAttempts, providerCredentials, providers, providerModels, modelBenchmarkResults } from '../db/schema.js';
 import { streamManager } from '../services/stream-manager.js';
+import { ProviderService } from '../providers/provider-service.js';
 import type { Db } from '../db/index.js';
 import { buildPublicModelId } from '../providers/public-model-id.js';
 import { compareModelHealth, getModelHealth, serializeBenchmark, summarizeModelHealth, type ModelBenchmarkSnapshot } from '../services/model-health.js';
@@ -31,6 +32,10 @@ const updateSettingsSchema = z.object({
   publicModelIds: z.array(z.string()).optional(),
 });
 
+const migrateLegacyEncryptionSchema = z.object({
+  legacyKey: z.string().min(32).max(4096),
+});
+
 function toKeyResponse(key: typeof apiKeys.$inferSelect) {
   return {
     id: key.id,
@@ -49,6 +54,7 @@ function toKeyResponse(key: typeof apiKeys.$inferSelect) {
 }
 
 export async function registerAdminRoutes(app: FastifyInstance, db: Db) {
+  const providerService = new ProviderService(db);
   function snapshotFromRow(row: {
     benchmarkProviderModelId: string | null;
     benchmarkOutcome: ModelBenchmarkSnapshot['outcome'] | null;
@@ -316,6 +322,24 @@ export async function registerAdminRoutes(app: FastifyInstance, db: Db) {
     return reply.send({ success: true });
   });
 
+  app.post('/admin/credential-encryption/migrate', async (request, reply) => {
+    const parsed = migrateLegacyEncryptionSchema.safeParse(request.body);
+    if (!parsed.success) {
+      return reply.status(400).send({ error: 'Bad Request', message: 'Enter the previous encryption key.' });
+    }
+
+    try {
+      const result = await providerService.migrateLegacyEncryptionKey(parsed.data.legacyKey);
+      return reply.send({ success: true, ...result });
+    } catch {
+      // Never disclose decrypt failures or include a candidate key in logs.
+      return reply.status(400).send({
+        error: 'Bad Request',
+        message: 'The previous encryption key could not decrypt the stored credentials.',
+      });
+    }
+  });
+
   app.get('/admin/models', async (_request, reply) => {
     const rows = await db
       .select({
@@ -512,88 +536,68 @@ export async function registerAdminRoutes(app: FastifyInstance, db: Db) {
     rawRes.write(`data: ${JSON.stringify({ type: 'connected', timestamp: Date.now() })}\n\n`);
   });
 
-  const createTempKeySchema = z.object({
-    label: z.string().min(1).max(100),
-    expiresInMinutes: z.number().int().min(1).max(43200).optional(),
-    maxRequests: z.number().int().min(1).max(100000).optional(),
-  });
+  app.get('/admin/live-flow', async (request, reply) => {
+    const limit = Math.max(1, Math.min(parseInt((request.query as { limit?: string }).limit || '20', 10), 50));
+    const logs = await db.select({
+      id: requestLogs.id,
+      requestId: requestLogs.requestId,
+      timestamp: requestLogs.timestamp,
+      route: requestLogs.route,
+      model: requestLogs.publicModelId,
+      upstreamModelId: requestLogs.upstreamModelId,
+      providerName: providers.name,
+      statusCode: requestLogs.statusCode,
+      latencyMs: requestLogs.latencyMs,
+      streaming: requestLogs.streaming,
+      fallback: requestLogs.fallback,
+      clientIp: requestLogs.clientIp,
+      promptTokens: requestLogs.promptTokens,
+      completionTokens: requestLogs.completionTokens,
+      totalTokens: requestLogs.totalTokens,
+      estimatedCost: requestLogs.estimatedCost,
+      attemptCount: requestLogs.attemptCount,
+      failoverCount: requestLogs.failoverCount,
+    }).from(requestLogs)
+      .leftJoin(providers, eq(requestLogs.finalProviderId, providers.id))
+      .orderBy(desc(requestLogs.timestamp))
+      .limit(limit);
 
-  app.get('/admin/temp-keys', async (_request, reply) => {
-    const rows = await db.query.gatewayCredentials.findMany({
-      orderBy: (gc, { desc }) => [desc(gc.createdAt)],
-    });
-    const now = new Date();
-    return reply.send(
-      rows.map((cred) => ({
-        id: cred.id,
-        label: cred.label,
-        maskedKey: cred.maskedKey,
-        expiresAt: cred.expiresAt?.toISOString() ?? null,
-        isExpired: cred.expiresAt ? now > new Date(cred.expiresAt) : false,
-        maxRequests: cred.maxRequests,
-        requestCount: cred.requestCount,
-        isActive: cred.isActive,
-        createdAt: cred.createdAt.toISOString(),
-      }))
-    );
-  });
+    const logIds = logs.map((log) => log.id);
+    const attempts = logIds.length === 0 ? [] : await db.select({
+      requestLogId: requestAttempts.requestLogId,
+      attemptNumber: requestAttempts.attemptNumber,
+      providerName: providers.name,
+      credentialName: providerCredentials.name,
+      upstreamModelId: requestAttempts.upstreamModelId,
+      startedAt: requestAttempts.startedAt,
+      completedAt: requestAttempts.completedAt,
+      latencyMs: requestAttempts.latencyMs,
+      httpStatus: requestAttempts.httpStatus,
+      result: requestAttempts.result,
+      errorCode: requestAttempts.errorCode,
+      errorMessage: requestAttempts.errorMessage,
+      retryable: requestAttempts.retryable,
+    }).from(requestAttempts)
+      .leftJoin(providers, eq(requestAttempts.providerId, providers.id))
+      .leftJoin(providerCredentials, eq(requestAttempts.credentialId, providerCredentials.id))
+      .where(inArray(requestAttempts.requestLogId, logIds))
+      .orderBy(asc(requestAttempts.attemptNumber));
 
-  app.post('/admin/temp-keys', async (request, reply) => {
-    const parsed = createTempKeySchema.safeParse(request.body);
-    if (!parsed.success) {
-      return reply.status(400).send({ error: 'Bad Request', message: parsed.error.message });
+    const attemptsByLogId = new Map<string, typeof attempts>();
+    for (const attempt of attempts) {
+      const current = attemptsByLogId.get(attempt.requestLogId) ?? [];
+      current.push(attempt);
+      attemptsByLogId.set(attempt.requestLogId, current);
     }
 
-    const { label, expiresInMinutes, maxRequests } = parsed.data;
-    const rawKey = `router_${generateSecureToken(24)}`;
-    const keyHash = await hashGatewayKey(rawKey);
-    const now = new Date();
-
-    const credential = await db.insert(gatewayCredentials).values({
-      id: crypto.randomUUID(),
-      label,
-      keyHash,
-      maskedKey: maskKey(rawKey),
-      expiresAt: expiresInMinutes ? new Date(now.getTime() + expiresInMinutes * 60 * 1000) : null,
-      maxRequests: maxRequests ?? null,
-      requestCount: 0,
-      isActive: true,
-      createdAt: now,
-      updatedAt: now,
-    }).returning();
-
-    return reply.status(201).send({
-      id: credential[0].id,
-      key: rawKey,
-      label,
-      maskedKey: maskKey(rawKey),
-      expiresAt: credential[0].expiresAt?.toISOString() ?? null,
-      maxRequests,
-      message: 'Copy this key now. It will not be shown again.',
-    });
-  });
-
-  app.delete('/admin/temp-keys/:id', async (request, reply) => {
-    const { id } = request.params as { id: string };
-    await db.delete(gatewayCredentials).where(eq(gatewayCredentials.id, id));
-    return reply.send({ success: true });
-  });
-
-  app.post('/admin/temp-keys/:id/revoke', async (request, reply) => {
-    const { id } = request.params as { id: string };
-    await db
-      .update(gatewayCredentials)
-      .set({ isActive: false, updatedAt: new Date() })
-      .where(eq(gatewayCredentials.id, id));
-    return reply.send({ success: true });
-  });
-
-  app.post('/admin/temp-keys/:id/reactivate', async (request, reply) => {
-    const { id } = request.params as { id: string };
-    await db
-      .update(gatewayCredentials)
-      .set({ isActive: true, updatedAt: new Date() })
-      .where(eq(gatewayCredentials.id, id));
-    return reply.send({ success: true });
+    return reply.send(logs.map((log) => ({
+      ...log,
+      timestamp: log.timestamp.toISOString(),
+      attempts: (attemptsByLogId.get(log.id) ?? []).map((attempt) => ({
+        ...attempt,
+        startedAt: attempt.startedAt.toISOString(),
+        completedAt: attempt.completedAt?.toISOString() ?? null,
+      })),
+    })));
   });
 }

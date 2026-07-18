@@ -11,7 +11,9 @@ export type StreamEventType =
   | 'streaming_completed'
   | 'key_failed'
   | 'failover_attempted'
-  | 'request_completed';
+  | 'request_completed'
+  | 'benchmark_started'
+  | 'benchmark_completed';
 
 export interface StreamEvent {
   type: StreamEventType;
@@ -31,6 +33,10 @@ export interface StreamEvent {
   streaming?: boolean;
   attempt?: number;
   fallback?: boolean;
+  /** Gateway traffic or a diagnostic model benchmark. */
+  flowType?: 'gateway' | 'benchmark';
+  providerName?: string;
+  latencyMs?: number | null;
   timestamp: number;
 }
 

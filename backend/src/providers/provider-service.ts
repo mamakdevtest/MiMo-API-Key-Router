@@ -6,7 +6,7 @@
 import { eq, asc, sql, and } from 'drizzle-orm';
 import { config } from '../config.js';
 import { encrypt, decrypt, maskKey } from '../crypto/index.js';
-import { providers, providerCredentials, providerModels, modelRoutes, modelRouteTargets, apiKeyEvents } from '../db/schema.js';
+import { providers, providerCredentials, providerModels, modelRoutes, modelRouteTargets, apiKeyEvents, apiKeys } from '../db/schema.js';
 import { getAdapter } from './registry.js';
 import type { Db } from '../db/index.js';
 import type {
@@ -205,6 +205,46 @@ export class ProviderService {
       status: enabled ? 'active' : 'disabled',
       updatedAt: new Date(),
     }).where(eq(providerCredentials.id, id));
+  }
+
+  /**
+   * Re-encrypt persisted credentials after the application moved from its
+   * legacy encryption environment variable to the key derived from
+   * GATEWAY_KEY. The supplied legacy key is used only in memory and is never
+   * written to the database or logs. Decrypt every row before updating any
+   * row, so an invalid key cannot leave a partially migrated database.
+   */
+  async migrateLegacyEncryptionKey(legacyKey: string): Promise<{ providerCredentials: number; legacyApiKeys: number }> {
+    const [credentialRows, legacyKeyRows] = await Promise.all([
+      this.db.query.providerCredentials.findMany(),
+      this.db.query.apiKeys.findMany(),
+    ]);
+
+    const decryptedCredentials = credentialRows.map((row) => ({
+      id: row.id,
+      secret: decrypt(row.encryptedSecret, legacyKey),
+    }));
+    const decryptedLegacyKeys = legacyKeyRows.map((row) => ({
+      id: row.id,
+      secret: decrypt(row.encryptedKey, legacyKey),
+    }));
+
+    await this.db.transaction((tx) => {
+      for (const credential of decryptedCredentials) {
+        tx.update(providerCredentials)
+          .set({ encryptedSecret: encrypt(credential.secret, config.encryptionKey), updatedAt: new Date() })
+          .where(eq(providerCredentials.id, credential.id))
+          .run();
+      }
+      for (const legacyKey of decryptedLegacyKeys) {
+        tx.update(apiKeys)
+          .set({ encryptedKey: encrypt(legacyKey.secret, config.encryptionKey), updatedAt: new Date() })
+          .where(eq(apiKeys.id, legacyKey.id))
+          .run();
+      }
+    });
+
+    return { providerCredentials: decryptedCredentials.length, legacyApiKeys: decryptedLegacyKeys.length };
   }
 
   async markCredentialCooldown(id: string, durationMs: number, errorCode: number, errorMessage: string): Promise<void> {

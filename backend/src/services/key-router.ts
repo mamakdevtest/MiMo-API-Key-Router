@@ -3,7 +3,7 @@ import { config } from '../config.js';
 import { decrypt } from '../crypto/index.js';
 import { apiKeys, apiKeyEvents, settings } from '../db/schema.js';
 import type { Db } from '../db/index.js';
-import type { ApiKeyStatus } from '@mimo/shared';
+import type { ApiKeyStatus } from '@api-router/shared';
 
 export interface SelectedKey {
   id: string;

@@ -1,441 +1,266 @@
-import { useEffect, useState, useRef } from 'react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Server, KeyRound, Bot, Activity, AlertTriangle, CheckCircle2, Clock, XCircle, ArrowRight, Zap, RefreshCw } from 'lucide-react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import { Activity, AlertTriangle, ArrowRight, Bot, CheckCircle2, Clock3, KeyRound, Radio, Server, XCircle } from 'lucide-react';
+import { motion } from 'framer-motion';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { api } from '@/lib/api';
+
+type FlowMode = 'gateway' | 'benchmark';
 
 interface StreamEvent {
   type: string;
+  flowType?: FlowMode;
   requestId?: string;
-  keyId?: string;
   label?: string;
   model?: string;
+  providerName?: string;
   tokens?: number;
-  promptTokens?: number;
-  completionTokens?: number;
   cost?: number;
   success?: boolean;
   statusCode?: number;
   errorMessage?: string;
-  errorCode?: number;
   keyStatus?: string;
   streaming?: boolean;
   attempt?: number;
-  fallback?: boolean;
+  latencyMs?: number | null;
   timestamp: number;
 }
 
-// Group events by requestId for timeline display
 interface RequestFlow {
   requestId: string;
   model: string;
+  providerName?: string;
   events: StreamEvent[];
   status: 'pending' | 'success' | 'failed';
   totalTokens: number;
   cost: number;
   streaming: boolean;
   attempts: number;
+  latencyMs: number | null;
+  persisted?: boolean;
 }
 
-const EVENT_COLORS: Record<string, string> = {
-  request_started: 'text-blue-400',
-  key_selected: 'text-cyan-400',
-  upstream_sent: 'text-indigo-400',
-  upstream_response: 'text-violet-400',
-  streaming_started: 'text-sky-400',
-  streaming_completed: 'text-emerald-400',
-  key_failed: 'text-red-400',
-  failover_attempted: 'text-amber-400',
-  request_completed: 'text-green-400',
+const EVENT_STYLE: Record<string, { label: string; color: string }> = {
+  request_started: { label: 'Request received', color: 'text-blue-400' },
+  benchmark_started: { label: 'Test started', color: 'text-blue-400' },
+  key_selected: { label: 'Credential selected', color: 'text-cyan-400' },
+  upstream_sent: { label: 'Sent upstream', color: 'text-indigo-400' },
+  upstream_response: { label: 'Upstream responded', color: 'text-violet-400' },
+  key_failed: { label: 'Attempt failed', color: 'text-red-400' },
+  failover_attempted: { label: 'Failover', color: 'text-amber-400' },
+  request_completed: { label: 'Completed', color: 'text-emerald-400' },
+  benchmark_completed: { label: 'Test completed', color: 'text-emerald-400' },
 };
 
-const EVENT_ICONS: Record<string, typeof Activity> = {
-  request_started: Activity,
-  key_selected: KeyRound,
-  upstream_sent: ArrowRight,
-  upstream_response: Server,
-  streaming_started: Zap,
-  streaming_completed: CheckCircle2,
-  key_failed: XCircle,
-  failover_attempted: RefreshCw,
-  request_completed: CheckCircle2,
-};
+function eventIcon(type: string) {
+  if (type === 'key_selected') return KeyRound;
+  if (type === 'key_failed') return XCircle;
+  if (type === 'request_completed' || type === 'benchmark_completed') return CheckCircle2;
+  if (type === 'upstream_response') return Server;
+  return Activity;
+}
 
-const EVENT_LABELS: Record<string, string> = {
-  request_started: 'Request Started',
-  key_selected: 'Key Selected',
-  upstream_sent: 'Upstream Sent',
-  upstream_response: 'Response Received',
-  streaming_started: 'Streaming Started',
-  streaming_completed: 'Streaming Completed',
-  key_failed: 'Key Failed',
-  failover_attempted: 'Failover',
-  request_completed: 'Completed',
-};
+function eventTime(iso: string) {
+  const value = new Date(iso).getTime();
+  return Number.isNaN(value) ? Date.now() : value;
+}
 
-const STATUS_BADGE: Record<string, { bg: string; text: string; label: string }> = {
-  exhausted: { bg: 'bg-orange-500/15', text: 'text-orange-400', label: 'Exhausted' },
-  cooldown: { bg: 'bg-yellow-500/15', text: 'text-yellow-400', label: 'Cooldown' },
-  invalid: { bg: 'bg-red-500/15', text: 'text-red-400', label: 'Invalid' },
-  disabled: { bg: 'bg-red-500/15', text: 'text-red-400', label: 'Disabled' },
-};
+function historicFlow(record: Awaited<ReturnType<typeof api.liveFlow.list>>[number]): RequestFlow {
+  const baseTime = eventTime(record.timestamp);
+  const succeeded = record.statusCode !== null && record.statusCode >= 200 && record.statusCode < 300;
+  const events: StreamEvent[] = [{
+    type: 'request_started', requestId: record.requestId, model: record.model ?? record.upstreamModelId ?? 'unknown',
+    providerName: record.providerName ?? undefined, streaming: record.streaming, timestamp: baseTime,
+  }];
 
-export function LiveFlowDiagram() {
+  for (const attempt of record.attempts) {
+    events.push({
+      type: 'key_selected', requestId: record.requestId, label: attempt.credentialName ?? 'Credential',
+      providerName: attempt.providerName ?? undefined, model: record.model ?? attempt.upstreamModelId ?? 'unknown',
+      attempt: attempt.attemptNumber, timestamp: eventTime(attempt.startedAt),
+    });
+    events.push({
+      type: attempt.result === 'success' ? 'upstream_response' : 'key_failed', requestId: record.requestId,
+      label: attempt.credentialName ?? undefined, providerName: attempt.providerName ?? undefined,
+      model: record.model ?? attempt.upstreamModelId ?? 'unknown', attempt: attempt.attemptNumber,
+      statusCode: attempt.httpStatus ?? undefined, latencyMs: attempt.latencyMs,
+      errorMessage: attempt.errorMessage ?? undefined, success: attempt.result === 'success',
+      timestamp: attempt.completedAt ? eventTime(attempt.completedAt) : baseTime,
+    });
+  }
+  events.push({
+    type: 'request_completed', requestId: record.requestId, model: record.model ?? record.upstreamModelId ?? 'unknown',
+    providerName: record.providerName ?? undefined, statusCode: record.statusCode ?? undefined, success: succeeded,
+    latencyMs: record.latencyMs, tokens: record.totalTokens ?? 0, cost: record.estimatedCost ?? 0,
+    timestamp: baseTime + 1,
+  });
+
+  return {
+    requestId: record.requestId,
+    model: record.model ?? record.upstreamModelId ?? 'unknown',
+    providerName: record.providerName ?? undefined,
+    events,
+    status: succeeded ? 'success' : 'failed',
+    totalTokens: record.totalTokens ?? 0,
+    cost: record.estimatedCost ?? 0,
+    streaming: record.streaming,
+    attempts: record.attemptCount ?? (record.attempts.length || 1),
+    latencyMs: record.latencyMs,
+    persisted: true,
+  };
+}
+
+export function LiveFlowDiagram({ mode = 'gateway', title }: { mode?: FlowMode; title?: string }) {
   const [flows, setFlows] = useState<RequestFlow[]>([]);
-  const [activeEvent, setActiveEvent] = useState<StreamEvent | null>(null);
-  const [pulse, setPulse] = useState(false);
   const [connected, setConnected] = useState(false);
-  const timelineRef = useRef<HTMLDivElement>(null);
+  const [lastEvent, setLastEvent] = useState<StreamEvent | null>(null);
+  const activeTimers = useRef<ReturnType<typeof setTimeout>[]>([]);
+  const history = useQuery({
+    queryKey: ['live-flow', mode],
+    queryFn: () => api.liveFlow.list(20),
+    enabled: mode === 'gateway',
+    retry: false,
+    refetchInterval: 30_000,
+  });
+
+  useEffect(() => {
+    if (!history.data || mode !== 'gateway') return;
+    const restored = history.data.map(historicFlow);
+    setFlows((current) => {
+      const live = current.filter((flow) => !flow.persisted);
+      const merged = [...live, ...restored.filter((stored) => !live.some((flow) => flow.requestId === stored.requestId))];
+      return merged.sort((a, b) => b.events[0].timestamp - a.events[0].timestamp).slice(0, 20);
+    });
+  }, [history.data, mode]);
 
   useEffect(() => {
     const sse = new EventSource('/admin/stream');
-
     sse.onopen = () => setConnected(true);
     sse.onerror = () => setConnected(false);
-
-    sse.onmessage = (e) => {
+    sse.onmessage = (message) => {
       try {
-        const data = JSON.parse(e.data) as StreamEvent;
-        if (data.type === 'connected' || data.type === 'ping') return;
-
-        setActiveEvent(data);
-        setPulse(true);
-        setTimeout(() => setPulse(false), 800);
-
-        if (!data.requestId) return;
-
-        setFlows((prev) => {
-          const existingIndex = prev.findIndex((f) => f.requestId === data.requestId);
-
-          if (existingIndex >= 0) {
-            const updated = [...prev];
-            const flow = { ...updated[existingIndex] };
-            flow.events = [...flow.events, data];
-
-            if (data.type === 'request_completed') {
-              flow.status = data.success ? 'success' : 'failed';
-              flow.totalTokens = data.tokens ?? flow.totalTokens;
-              flow.cost = data.cost ?? flow.cost;
-            }
-            if (data.type === 'streaming_completed') {
-              flow.totalTokens = data.tokens ?? flow.totalTokens;
-              flow.cost = data.cost ?? flow.cost;
-            }
-            if (data.type === 'key_selected') {
-              flow.attempts = data.attempt ?? flow.attempts;
-            }
-
-            updated[existingIndex] = flow;
-            return updated;
+        const event = JSON.parse(message.data) as StreamEvent;
+        if (event.type === 'connected' || event.type === 'ping' || (event.flowType ?? 'gateway') !== mode || !event.requestId) return;
+        setLastEvent(event);
+        const timer = setTimeout(() => setLastEvent(null), 1_500);
+        activeTimers.current.push(timer);
+        setFlows((current) => {
+          const index = current.findIndex((flow) => flow.requestId === event.requestId);
+          if (index < 0) {
+            const newFlow: RequestFlow = {
+              requestId: event.requestId!, model: event.model ?? 'unknown', providerName: event.providerName,
+              events: [event], status: 'pending', totalTokens: 0, cost: 0, streaming: event.streaming ?? false,
+              attempts: event.attempt ?? 1, latencyMs: null,
+            };
+            return [newFlow, ...current].slice(0, 20);
           }
-
-          // New request
-          const newFlow: RequestFlow = {
-            requestId: data.requestId!,
-            model: data.model || 'unknown',
-            events: [data],
-            status: 'pending',
-            totalTokens: 0,
-            cost: 0,
-            streaming: data.streaming ?? false,
-            attempts: 1,
-          };
-
-          // Keep max 8 flows
-          const result = [newFlow, ...prev].slice(0, 8);
-          return result;
+          const updated = [...current];
+          const flow = { ...updated[index], events: [...updated[index].events, event], persisted: false };
+          flow.model = event.model ?? flow.model;
+          flow.providerName = event.providerName ?? flow.providerName;
+          flow.attempts = Math.max(flow.attempts, event.attempt ?? 1);
+          if (event.latencyMs !== undefined) flow.latencyMs = event.latencyMs;
+          if (event.type === 'request_completed' || event.type === 'benchmark_completed') {
+            flow.status = event.success ? 'success' : 'failed';
+            flow.totalTokens = event.tokens ?? flow.totalTokens;
+            flow.cost = event.cost ?? flow.cost;
+          }
+          updated.splice(index, 1);
+          return [flow, ...updated].slice(0, 20);
         });
-      } catch (err) {}
+      } catch {
+        // Ignore malformed SSE payloads; the next event remains usable.
+      }
     };
-
     return () => {
       sse.close();
+      activeTimers.current.forEach(clearTimeout);
+      activeTimers.current = [];
       setConnected(false);
     };
-  }, []);
+  }, [mode]);
 
-  // Auto-scroll timeline
-  useEffect(() => {
-    if (timelineRef.current) {
-      timelineRef.current.scrollTop = 0;
-    }
+  const latest = flows[0];
+  const summary = useMemo(() => {
+    const completed = flows.filter((flow) => flow.status !== 'pending');
+    const successful = completed.filter((flow) => flow.status === 'success').length;
+    const latencies = completed.map((flow) => flow.latencyMs).filter((value): value is number => value !== null);
+    return {
+      completed: completed.length,
+      successful,
+      active: flows.filter((flow) => flow.status === 'pending').length,
+      averageLatency: latencies.length ? Math.round(latencies.reduce((sum, value) => sum + value, 0) / latencies.length) : null,
+    };
   }, [flows]);
-
-  const latestFlow = flows[0];
-  const flowStatus = latestFlow?.status ?? 'pending';
+  const heading = title ?? (mode === 'benchmark' ? 'Live Model Test Flow' : 'Live Request Flow');
 
   return (
-    <motion.div
-      initial={{ opacity: 0, y: 20 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.5, delay: 0.1 }}
-    >
-      <Card className="mb-6 overflow-hidden border-2 border-muted relative glass-panel hover-glow">
-        <CardHeader className="bg-muted/30 border-b border-white/5 pb-4">
-          <div className="flex items-center justify-between">
-            <CardTitle className="flex items-center gap-2 text-lg">
-              <Activity className="h-5 w-5 text-blue-400" />
-              Live Request Flow
-            </CardTitle>
-            <div className="flex items-center gap-2">
-              <div className={`w-2 h-2 rounded-full ${connected ? 'bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.8)]' : 'bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.8)]'}`} />
-              <span className="text-xs text-muted-foreground">{connected ? 'Connected' : 'Disconnected'}</span>
-            </div>
+    <Card className="overflow-hidden border border-border/80 bg-card/80 shadow-sm">
+      <CardHeader className="border-b bg-muted/20 pb-4">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <CardTitle className="flex items-center gap-2 text-lg"><Activity className="h-5 w-5 text-primary" />{heading}</CardTitle>
+            <CardDescription className="mt-1">
+              {mode === 'gateway' ? 'Recent requests are restored from SQLite after a deployment; new requests stream in live.' : 'Each model test shows its selected credential and final availability result as it runs.'}
+            </CardDescription>
           </div>
-        </CardHeader>
-        <CardContent className="p-6">
-          {/* Flow Diagram */}
-          <div className="flex flex-col md:flex-row items-center justify-between gap-6 relative max-w-4xl mx-auto mb-6">
+          <span className={`inline-flex items-center gap-2 rounded-full px-2.5 py-1 text-xs ${connected ? 'bg-emerald-500/10 text-emerald-400' : 'bg-muted text-muted-foreground'}`}>
+            <Radio className="h-3.5 w-3.5" />{connected ? 'Live connected' : 'Reconnecting'}
+          </span>
+        </div>
+      </CardHeader>
+      <CardContent className="space-y-5 p-5">
+        <div className="grid gap-3 sm:grid-cols-4">
+          <Stat label="Completed" value={String(summary.completed)} />
+          <Stat label="Successful" value={String(summary.successful)} tone="success" />
+          <Stat label="Active" value={String(summary.active)} tone={summary.active ? 'info' : undefined} />
+          <Stat label="Avg latency" value={summary.averageLatency === null ? '—' : `${summary.averageLatency} ms`} />
+        </div>
 
-            {/* Client Node */}
-            <motion.div whileHover={{ scale: 1.05 }} className="flex flex-col items-center z-10">
-              <div className={`w-14 h-14 rounded-2xl bg-blue-500/10 border-2 flex items-center justify-center transition-all duration-500 ${pulse ? 'border-blue-500 shadow-[0_0_20px_rgba(59,130,246,0.5)]' : 'border-blue-500/30'}`}>
-                <Server className={`h-7 w-7 transition-colors duration-300 ${pulse ? 'text-blue-500' : 'text-blue-500/50'}`} />
-              </div>
-              <span className="mt-2 font-medium text-xs text-muted-foreground">Client</span>
-            </motion.div>
+        <div className="grid items-center gap-3 rounded-xl border bg-muted/20 p-4 text-center md:grid-cols-[1fr_auto_1fr_auto_1fr]">
+          <FlowNode icon={<Server className="h-5 w-5" />} label={mode === 'benchmark' ? 'Benchmark' : 'Client'} active={!!lastEvent} />
+          <ArrowRight className="mx-auto hidden h-4 w-4 text-muted-foreground md:block" />
+          <FlowNode icon={<Activity className="h-5 w-5" />} label="API Router" active={!!lastEvent} />
+          <ArrowRight className="mx-auto hidden h-4 w-4 text-muted-foreground md:block" />
+          <FlowNode icon={<Bot className="h-5 w-5" />} label={latest?.providerName ?? latest?.model ?? 'Provider'} active={!!lastEvent} />
+        </div>
 
-            {/* Line 1 */}
-            <div className="hidden md:block flex-1 h-0.5 bg-muted/50 relative overflow-hidden rounded-full">
-              <motion.div
-                className="absolute top-0 left-0 h-full bg-gradient-to-r from-blue-500 to-cyan-500 rounded-full"
-                initial={{ width: '0%', opacity: 0 }}
-                animate={{ width: pulse ? '100%' : '0%', opacity: pulse ? 1 : 0 }}
-                transition={{ duration: 0.3, ease: 'easeOut' }}
-              />
-            </div>
-
-            {/* Router Node */}
-            <motion.div whileHover={{ scale: 1.05 }} className="flex flex-col items-center z-10">
-              <motion.div
-                animate={{ scale: pulse ? 1.1 : 1 }}
-                transition={{ duration: 0.3 }}
-                className={`w-16 h-16 rounded-full bg-blue-500/10 border-2 flex items-center justify-center transition-all duration-500 ${pulse ? 'border-blue-500 shadow-[0_0_30px_rgba(59,130,246,0.5)]' : 'border-blue-500/30'}`}
-              >
-                <Activity className={`h-8 w-8 transition-colors duration-300 ${pulse ? 'text-blue-400' : 'text-blue-400/50'}`} />
-              </motion.div>
-              <span className="mt-2 font-bold text-sm text-gradient">Router</span>
-              {latestFlow && latestFlow.attempts > 1 && (
-                <motion.span
-                  initial={{ opacity: 0, scale: 0 }}
-                  animate={{ opacity: 1, scale: 1 }}
-                  className="text-[10px] text-amber-400 font-semibold mt-0.5"
-                >
-                  {latestFlow.attempts} attempts
-                </motion.span>
-              )}
-            </motion.div>
-
-            {/* Line 2 */}
-            <div className="hidden md:block flex-1 h-0.5 bg-muted/50 relative overflow-hidden rounded-full">
-              <motion.div
-                className={`absolute top-0 left-0 h-full rounded-full ${flowStatus === 'failed' ? 'bg-gradient-to-r from-cyan-500 to-red-500' : 'bg-gradient-to-r from-cyan-500 to-green-500'}`}
-                initial={{ width: '0%', opacity: 0 }}
-                animate={{ width: pulse ? '100%' : '0%', opacity: pulse ? 1 : 0 }}
-                transition={{ duration: 0.3, delay: 0.15, ease: 'easeOut' }}
-              />
-            </div>
-
-            {/* Key Node */}
-            <motion.div whileHover={{ scale: 1.05 }} className="flex flex-col items-center z-10">
-              <div className={`w-20 h-20 rounded-2xl border-[3px] flex flex-col items-center justify-center transition-all duration-500 relative ${pulse
-                ? (flowStatus === 'failed' ? 'bg-red-500/10 border-red-500 shadow-[0_0_30px_rgba(239,68,68,0.5)]' : 'bg-green-500/10 border-green-500 shadow-[0_0_30px_rgba(34,197,94,0.5)]')
-                : 'bg-muted/50 border-muted-foreground/20'}`}>
-                <KeyRound className={`h-5 w-5 mb-0.5 transition-colors duration-300 ${pulse
-                  ? (flowStatus === 'failed' ? 'text-red-500' : 'text-green-500')
-                  : 'text-muted-foreground/60'}`} />
-                <span className="text-[9px] leading-tight font-semibold px-1 text-center break-all line-clamp-2">
-                  {activeEvent?.label || 'Waiting...'}
-                </span>
-                {pulse && (
-                  <span className="absolute inset-0 rounded-2xl -z-10">
-                    <span className={`animate-ping absolute inline-flex h-full w-full rounded-2xl opacity-40 ${flowStatus === 'failed' ? 'bg-red-400' : 'bg-green-400'}`} />
-                  </span>
-                )}
-              </div>
-              <span className="mt-2 font-medium text-xs text-muted-foreground">Active Key</span>
-            </motion.div>
-
-            {/* Line 3 */}
-            <div className="hidden md:block flex-1 h-0.5 bg-muted/50 relative overflow-hidden rounded-full">
-              <motion.div
-                className={`absolute top-0 left-0 h-full rounded-full ${flowStatus === 'failed' ? 'bg-gradient-to-r from-red-500 to-red-600' : 'bg-gradient-to-r from-green-500 to-purple-500'}`}
-                initial={{ width: '0%', opacity: 0 }}
-                animate={{ width: pulse ? '100%' : '0%', opacity: pulse ? 1 : 0 }}
-                transition={{ duration: 0.3, delay: 0.3, ease: 'easeOut' }}
-              />
-            </div>
-
-            {/* Upstream Node */}
-            <motion.div whileHover={{ scale: 1.05 }} className="flex flex-col items-center z-10">
-              <div className={`w-14 h-14 rounded-2xl bg-purple-500/10 border-2 flex items-center justify-center transition-all duration-500 ${pulse ? 'border-purple-500 shadow-[0_0_20px_rgba(168,85,247,0.5)]' : 'border-purple-500/30'}`}>
-                <Bot className={`h-7 w-7 transition-colors duration-300 ${pulse ? 'text-purple-500' : 'text-purple-500/50'}`} />
-              </div>
-              <span className="mt-2 font-medium text-xs text-center max-w-[100px] truncate text-muted-foreground">
-                {activeEvent?.model || 'Upstream'}
-              </span>
-            </motion.div>
+        {flows.length ? (
+          <div className="max-h-[360px] space-y-2 overflow-y-auto pr-1">
+            {flows.slice(0, 10).map((flow) => <FlowRow key={flow.requestId} flow={flow} />)}
           </div>
+        ) : (
+          <div className="flex min-h-28 items-center justify-center gap-2 rounded-xl border border-dashed text-sm text-muted-foreground"><Clock3 className="h-4 w-4" />Waiting for {mode === 'benchmark' ? 'a model test' : 'a request'}…</div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
 
-          {/* Live Stats Bar */}
-          <AnimatePresence>
-            {activeEvent && (
-              <motion.div
-                initial={{ opacity: 0, y: 10, scale: 0.95 }}
-                animate={{ opacity: 1, y: 0, scale: 1 }}
-                exit={{ opacity: 0, y: -10, scale: 0.95 }}
-                className="max-w-4xl mx-auto rounded-xl border border-white/10 bg-background/60 backdrop-blur-md p-4 flex flex-wrap items-center justify-between gap-4 shadow-xl shadow-black/20 mb-6"
-              >
-                <div className="flex flex-col min-w-[110px]">
-                  <span className="text-[10px] text-muted-foreground uppercase tracking-wider font-semibold mb-0.5">Status</span>
-                  {flowStatus === 'failed' ? (
-                    <span className="text-red-500 font-bold flex items-center gap-1.5 text-sm">
-                      <div className="w-2 h-2 rounded-full bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.8)]" /> Failed
-                    </span>
-                  ) : flowStatus === 'pending' ? (
-                    <span className="text-blue-500 font-bold flex items-center gap-1.5 text-sm">
-                      <div className="w-2 h-2 rounded-full bg-blue-500 animate-pulse shadow-[0_0_8px_rgba(59,130,246,0.8)]" /> Processing
-                    </span>
-                  ) : (
-                    <span className="text-green-500 font-bold flex items-center gap-1.5 text-sm">
-                      <div className="w-2 h-2 rounded-full bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.8)]" /> Success
-                    </span>
-                  )}
-                </div>
-                <div className="flex flex-col flex-1 min-w-[120px]">
-                  <span className="text-[10px] text-muted-foreground uppercase tracking-wider font-semibold mb-0.5">Model</span>
-                  <span className="font-medium text-sm truncate" title={activeEvent?.model || ''}>{activeEvent?.model || '-'}</span>
-                </div>
-                <div className="flex flex-col text-right min-w-[80px]">
-                  <span className="text-[10px] text-muted-foreground uppercase tracking-wider font-semibold mb-0.5">Tokens</span>
-                  {flowStatus === 'pending' ? (
-                    <span className="text-muted-foreground animate-pulse text-xs">Counting...</span>
-                  ) : (
-                    <motion.span
-                      key={latestFlow?.totalTokens}
-                      initial={{ opacity: 0, scale: 1.3 }}
-                      animate={{ opacity: 1, scale: 1 }}
-                      className="font-mono text-base font-semibold"
-                    >
-                      {(latestFlow?.totalTokens || 0).toLocaleString()}
-                    </motion.span>
-                  )}
-                </div>
-                <div className="flex flex-col text-right min-w-[100px]">
-                  <span className="text-[10px] text-muted-foreground uppercase tracking-wider font-semibold mb-0.5">Cost</span>
-                  {flowStatus === 'pending' ? (
-                    <span className="text-muted-foreground animate-pulse text-xs">Estimating...</span>
-                  ) : (
-                    <motion.span
-                      key={latestFlow?.cost}
-                      initial={{ opacity: 0, scale: 1.3 }}
-                      animate={{ opacity: 1, scale: 1 }}
-                      className="font-mono text-base font-semibold text-green-400 drop-shadow-[0_0_8px_rgba(34,197,94,0.4)]"
-                    >
-                      ${(latestFlow?.cost || 0).toFixed(6)}
-                    </motion.span>
-                  )}
-                </div>
-              </motion.div>
-            )}
-          </AnimatePresence>
+function Stat({ label, value, tone }: { label: string; value: string; tone?: 'success' | 'info' }) {
+  return <div className="rounded-lg border bg-background/60 p-3"><p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">{label}</p><p className={`mt-1 text-lg font-semibold ${tone === 'success' ? 'text-emerald-400' : tone === 'info' ? 'text-blue-400' : ''}`}>{value}</p></div>;
+}
 
-          {/* Event Timeline */}
-          {flows.length > 0 && (
-            <div ref={timelineRef} className="max-w-4xl mx-auto max-h-[320px] overflow-y-auto scrollbar-thin">
-              <div className="space-y-2">
-                {flows.slice(0, 5).map((flow) => (
-                  <motion.div
-                    key={flow.requestId}
-                    initial={{ opacity: 0, x: -20 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    className="rounded-lg border border-white/5 bg-muted/20 p-3"
-                  >
-                    {/* Flow Header */}
-                    <div className="flex items-center justify-between mb-2">
-                      <div className="flex items-center gap-2">
-                        <div className={`w-1.5 h-1.5 rounded-full ${flow.status === 'success' ? 'bg-green-500' : flow.status === 'failed' ? 'bg-red-500' : 'bg-blue-500 animate-pulse'}`} />
-                        <span className="text-xs font-mono text-muted-foreground">{flow.requestId.slice(0, 8)}</span>
-                        <span className="text-xs text-muted-foreground">·</span>
-                        <span className="text-xs font-medium">{flow.model}</span>
-                        {flow.streaming && (
-                          <span className="text-[9px] px-1.5 py-0.5 rounded bg-sky-500/15 text-sky-400 font-semibold">SSE</span>
-                        )}
-                        {flow.attempts > 1 && (
-                          <span className="text-[9px] px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-400 font-semibold">
-                            {flow.attempts} attempts
-                          </span>
-                        )}
-                      </div>
-                      <div className="flex items-center gap-3 text-xs">
-                        {flow.totalTokens > 0 && (
-                          <span className="text-muted-foreground font-mono">{flow.totalTokens.toLocaleString()} tok</span>
-                        )}
-                        {flow.cost > 0 && (
-                          <span className="text-green-400 font-mono">${flow.cost.toFixed(6)}</span>
-                        )}
-                      </div>
-                    </div>
+function FlowNode({ icon, label, active }: { icon: React.ReactNode; label: string; active: boolean }) {
+  return <motion.div animate={{ scale: active ? 1.02 : 1 }} className="flex min-w-0 items-center justify-center gap-2 text-sm font-medium"><span className={`rounded-lg border p-2 ${active ? 'border-primary/50 bg-primary/10 text-primary' : 'border-border bg-background text-muted-foreground'}`}>{icon}</span><span className="truncate">{label}</span></motion.div>;
+}
 
-                    {/* Event Steps */}
-                    <div className="flex flex-wrap gap-1">
-                      {flow.events.map((event, i) => {
-                        const Icon = EVENT_ICONS[event.type] || Activity;
-                        const color = EVENT_COLORS[event.type] || 'text-muted-foreground';
-                        const label = EVENT_LABELS[event.type] || event.type;
-
-                        return (
-                          <motion.div
-                            key={i}
-                            initial={{ opacity: 0, scale: 0.8 }}
-                            animate={{ opacity: 1, scale: 1 }}
-                            transition={{ delay: i * 0.05 }}
-                            className="flex items-center gap-1"
-                            title={event.errorMessage ? `${label}: ${event.errorMessage}` : label}
-                          >
-                            <div className={`flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-medium ${
-                              event.type === 'key_failed' ? 'bg-red-500/10' :
-                              event.type === 'failover_attempted' ? 'bg-amber-500/10' :
-                              event.type === 'request_completed' ? (event.success ? 'bg-green-500/10' : 'bg-red-500/10') :
-                              'bg-muted/30'
-                            }`}>
-                              <Icon className={`w-2.5 h-2.5 ${color}`} />
-                              <span className={color}>{label}</span>
-                              {event.label && event.type === 'key_selected' && (
-                                <span className="text-muted-foreground ml-0.5">({event.label})</span>
-                              )}
-                              {event.keyStatus && STATUS_BADGE[event.keyStatus] && (
-                                <span className={`ml-0.5 px-1 rounded text-[8px] ${STATUS_BADGE[event.keyStatus].bg} ${STATUS_BADGE[event.keyStatus].text}`}>
-                                  {STATUS_BADGE[event.keyStatus].label}
-                                </span>
-                              )}
-                              {event.statusCode && event.type === 'key_failed' && (
-                                <span className="text-red-400/70 ml-0.5">{event.statusCode}</span>
-                              )}
-                            </div>
-                            {i < flow.events.length - 1 && (
-                              <ArrowRight className="w-2.5 h-2.5 text-muted-foreground/30" />
-                            )}
-                          </motion.div>
-                        );
-                      })}
-                    </div>
-                  </motion.div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Empty State */}
-          {flows.length === 0 && (
-            <div className="max-w-4xl mx-auto text-center py-6">
-              <div className="flex items-center justify-center gap-2 text-muted-foreground">
-                <Clock className="w-4 h-4" />
-                <span className="text-sm">Waiting for requests...</span>
-              </div>
-            </div>
-          )}
-        </CardContent>
-      </Card>
+function FlowRow({ flow }: { flow: RequestFlow }) {
+  const failed = flow.status === 'failed';
+  const StatusIcon = failed ? XCircle : flow.status === 'success' ? CheckCircle2 : AlertTriangle;
+  return (
+    <motion.div initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }} className="rounded-xl border bg-background/50 p-3">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="min-w-0"><div className="flex items-center gap-2"><StatusIcon className={`h-4 w-4 shrink-0 ${failed ? 'text-red-400' : flow.status === 'success' ? 'text-emerald-400' : 'text-amber-400'}`} /><p className="truncate font-mono text-xs font-medium">{flow.model}</p></div><p className="mt-1 text-xs text-muted-foreground">{flow.providerName ?? 'Provider pending'} · {flow.attempts} attempt{flow.attempts === 1 ? '' : 's'} · {flow.latencyMs === null ? 'latency pending' : `${flow.latencyMs} ms`}</p></div>
+        <div className="text-right text-xs text-muted-foreground"><p>{flow.totalTokens ? `${flow.totalTokens.toLocaleString()} tokens` : '— tokens'}</p><p>{flow.events[0] ? new Date(flow.events[0].timestamp).toLocaleTimeString() : ''}</p></div>
+      </div>
+      <div className="mt-3 flex flex-wrap items-center gap-1.5">
+        {flow.events.map((event, index) => {
+          const descriptor = EVENT_STYLE[event.type] ?? { label: event.type, color: 'text-muted-foreground' };
+          const Icon = eventIcon(event.type);
+          return <div key={`${event.type}-${event.timestamp}-${index}`} className="flex items-center gap-1"><span title={event.errorMessage || descriptor.label} className="inline-flex max-w-48 items-center gap-1 rounded-md bg-muted px-1.5 py-1 text-[10px]"><Icon className={`h-3 w-3 shrink-0 ${descriptor.color}`} /><span className="truncate">{descriptor.label}{event.label ? `: ${event.label}` : ''}{event.statusCode ? ` (${event.statusCode})` : ''}</span></span>{index < flow.events.length - 1 && <ArrowRight className="h-3 w-3 text-muted-foreground/50" />}</div>;
+        })}
+      </div>
     </motion.div>
   );
 }

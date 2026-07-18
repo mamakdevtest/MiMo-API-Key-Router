@@ -32,7 +32,7 @@ import type {
 } from '../types.js';
 import { classifyHttpError, classifyNetworkError } from '../../routing/error-classifier.js';
 import { extractTokenUsage } from '../../usage/usage-normalizer.js';
-import { ALL_MODELS } from '@mimo/shared';
+import { ALL_MODELS } from '@api-router/shared';
 
 const MIMO_PRICING: Record<string, { input: number; output: number }> = {
   'mimo-v2.5-pro': { input: 0.435, output: 0.87 },

@@ -1,39 +1,18 @@
 import { Link } from 'react-router-dom';
-import { useState } from 'react';
-import { useMutation, useQuery } from '@tanstack/react-query';
-import { ArrowRight, KeyRound, RefreshCw, Server, Timer } from 'lucide-react';
+import { useQuery } from '@tanstack/react-query';
+import { ArrowRight, KeyRound, Server, ShieldCheck } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { api } from '@/lib/api';
-import { useToast } from '@/hooks/use-toast';
 
 export function Keys() {
-  const { toast } = useToast();
-  const [gatewayKey, setGatewayKey] = useState<string | null>(null);
-
   const { data: providers } = useQuery({
     queryKey: ['providers'],
     queryFn: api.providers.list,
     refetchInterval: 30000,
   });
 
-  const { data: tempKeys } = useQuery({
-    queryKey: ['temp-keys'],
-    queryFn: api.tempKeys.list,
-    refetchInterval: 10000,
-  });
-
-  const rotate = useMutation({
-    mutationFn: api.rotateGatewayKey,
-    onSuccess: (data) => {
-      setGatewayKey(data.key);
-      toast({ title: 'Gateway key rotated' });
-    },
-    onError: (err: Error) => toast({ title: 'Error', description: err.message, variant: 'destructive' }),
-  });
-
   const configuredProviders = providers ?? [];
-  const activeTempKeys = (tempKeys ?? []).filter((item) => item.isActive && !item.isExpired);
 
   return (
     <div className="space-y-6">
@@ -49,28 +28,16 @@ export function Keys() {
           <CardHeader>
             <CardTitle>Main Router Key</CardTitle>
             <CardDescription>
-              This is the only key your app or client should use. The router picks MiMo or Featherless provider keys automatically behind the scenes.
+              This is the only key your app or client should use. It is supplied as `GATEWAY_KEY` at deployment time and the router selects provider credentials internally.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
-            {gatewayKey ? (
-              <div className="rounded-xl border border-border bg-muted/30 p-4">
-                <p className="font-mono break-all text-sm">{gatewayKey}</p>
-                <p className="mt-2 text-xs text-destructive">Copy this now. It will not be shown again.</p>
+            <div className="flex items-start gap-3 rounded-xl border border-green-500/20 bg-green-500/5 p-4 text-sm">
+              <ShieldCheck className="mt-0.5 h-5 w-5 shrink-0 text-green-400" />
+              <div>
+                <p className="font-medium">One permanent router key</p>
+                <p className="mt-1 text-muted-foreground">Temporary keys and dashboard rotation are disabled. Change `GATEWAY_KEY` in your deployment environment only when you intentionally replace client access.</p>
               </div>
-            ) : (
-              <div className="rounded-xl border border-dashed border-border p-4 text-sm text-muted-foreground">
-                Rotate the gateway key when you want to issue a new single access key for all provider routes.
-              </div>
-            )}
-            <div className="flex flex-wrap gap-2">
-              <Button variant="destructive" onClick={() => rotate.mutate()} disabled={rotate.isPending}>
-                <RefreshCw className={`w-4 h-4 mr-2 ${rotate.isPending ? 'animate-spin' : ''}`} />
-                Rotate Gateway Key
-              </Button>
-              <Button asChild variant="outline">
-                <Link to="/temp-keys"><Timer className="w-4 h-4 mr-2" />Manage Temporary Keys</Link>
-              </Button>
             </div>
           </CardContent>
         </Card>
@@ -86,8 +53,8 @@ export function Keys() {
               <p className="text-sm text-muted-foreground">Configured providers</p>
             </div>
             <div className="rounded-lg bg-muted/30 p-3">
-              <p className="text-2xl font-bold">{activeTempKeys.length}</p>
-              <p className="text-sm text-muted-foreground">Active temporary gateway keys</p>
+              <p className="text-2xl font-bold">1</p>
+              <p className="text-sm text-muted-foreground">Accepted router key</p>
             </div>
           </CardContent>
         </Card>

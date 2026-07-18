@@ -21,7 +21,7 @@ export function Settings() {
   });
 
   const [passwords, setPasswords] = useState({ current: '', new: '', confirm: '' });
-  const [gatewayKey, setGatewayKey] = useState<string | null>(null);
+  const [legacyEncryptionKey, setLegacyEncryptionKey] = useState('');
 
   useEffect(() => {
     if (settings) {
@@ -44,15 +44,6 @@ export function Settings() {
     onError: (err: Error) => toast({ title: 'Error', description: err.message, variant: 'destructive' }),
   });
 
-  const rotate = useMutation({
-    mutationFn: api.rotateGatewayKey,
-    onSuccess: (data) => {
-      setGatewayKey(data.key);
-      toast({ title: 'Router key rotated' });
-    },
-    onError: (err: Error) => toast({ title: 'Error', description: err.message, variant: 'destructive' }),
-  });
-
   const changePassword = useMutation({
     mutationFn: ({ current, next }: { current: string; next: string }) => api.changePassword(current, next),
     onSuccess: () => {
@@ -62,12 +53,49 @@ export function Settings() {
     onError: (err: Error) => toast({ title: 'Error', description: err.message, variant: 'destructive' }),
   });
 
+  const migrateLegacyEncryption = useMutation({
+    mutationFn: () => api.credentialEncryption.migrate(legacyEncryptionKey),
+    onSuccess: (result) => {
+      setLegacyEncryptionKey('');
+      toast({ title: 'Stored credentials migrated', description: `${result.providerCredentials} provider credential(s) preserved.` });
+    },
+    onError: (err: Error) => toast({ title: 'Migration could not run', description: err.message, variant: 'destructive' }),
+  });
+
   return (
     <div className="space-y-6">
       <div>
         <h1 className="text-3xl font-bold tracking-tight">Settings</h1>
         <p className="text-muted-foreground">Configure router cooldowns, timeouts, IP allowlist, and admin access.</p>
       </div>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Preserve Existing Provider Credentials</CardTitle>
+          <CardDescription>
+            Only use this once after upgrading an older deployment that encrypted provider credentials with a separate environment value. The previous value is used in memory to re-encrypt existing records for the current router key and is never saved.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="space-y-2">
+            <Label>Previous encryption key</Label>
+            <Input
+              type="password"
+              value={legacyEncryptionKey}
+              onChange={(event) => setLegacyEncryptionKey(event.target.value)}
+              autoComplete="off"
+              placeholder="Only needed for an older deployment"
+            />
+          </div>
+          <Button
+            variant="outline"
+            onClick={() => migrateLegacyEncryption.mutate()}
+            disabled={legacyEncryptionKey.length < 32 || migrateLegacyEncryption.isPending}
+          >
+            {migrateLegacyEncryption.isPending ? 'Migrating…' : 'Migrate stored credentials'}
+          </Button>
+        </CardContent>
+      </Card>
 
       <Card>
         <CardHeader>
@@ -110,22 +138,6 @@ export function Settings() {
             placeholder="192.168.1.50&#10;88.245.10.0/24&#10;2001:db8::/32"
           />
           <Button onClick={() => updateSettings.mutate({ ipAllowlist: form.ipAllowlist })} disabled={updateSettings.isPending}>Save Allowlist</Button>
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>Router API Key</CardTitle>
-          <CardDescription>Rotate the main client-facing router key. The old key will stop working immediately.</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          {gatewayKey && (
-            <div className="p-3 rounded bg-muted">
-              <p className="text-sm font-mono break-all">{gatewayKey}</p>
-              <p className="text-xs text-destructive mt-1">Copy this now. It will not be shown again.</p>
-            </div>
-          )}
-          <Button variant="destructive" onClick={() => rotate.mutate()} disabled={rotate.isPending}>Rotate Router Key</Button>
         </CardContent>
       </Card>
 

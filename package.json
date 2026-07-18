@@ -1,5 +1,5 @@
 {
-  "name": "mimo-api-key-router",
+  "name": "api-router",
   "version": "1.0.0",
   "private": true,
   "type": "module",

@@ -43,6 +43,13 @@
       "when": 1784400000000,
       "tag": "0005_model_benchmark_results",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "6",
+      "when": 1784403600000,
+      "tag": "0006_single_router_key",
+      "breakpoints": true
     }
   ]
 }

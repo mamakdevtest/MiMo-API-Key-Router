@@ -13,7 +13,6 @@ import { Keys } from './pages/Keys';
 import { Settings } from './pages/Settings';
 import { Docs } from './pages/Docs';
 import { Logs } from './pages/Logs';
-import { TempKeys } from './pages/TempKeys';
 import { Toaster } from './components/ui/toaster';
 import { Button } from './components/ui/button';
 
@@ -91,7 +90,6 @@ function App() {
           <Route path="/model-catalog" element={<ModelCatalog />} />
           <Route path="/model-benchmark" element={<ModelBenchmark />} />
           <Route path="/keys" element={<Keys />} />
-          <Route path="/temp-keys" element={<TempKeys />} />
           <Route path="/requests" element={<Logs />} />
           <Route path="/settings" element={<Settings />} />
           <Route path="/docs" element={<Docs />} />

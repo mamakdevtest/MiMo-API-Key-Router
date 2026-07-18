@@ -50,19 +50,6 @@ export const adminSessions = sqliteTable('admin_sessions', {
   createdAt: integer('created_at', { mode: 'timestamp' }).notNull(),
 });
 
-export const gatewayCredentials = sqliteTable('gateway_credentials', {
-  id: text('id').primaryKey(),
-  label: text('label').notNull(),
-  keyHash: text('key_hash').notNull(),
-  maskedKey: text('masked_key').notNull(),
-  expiresAt: integer('expires_at', { mode: 'timestamp' }),
-  maxRequests: integer('max_requests'),
-  requestCount: integer('request_count').notNull().default(0),
-  isActive: integer('is_active', { mode: 'boolean' }).notNull().default(true),
-  createdAt: integer('created_at', { mode: 'timestamp' }).notNull(),
-  updatedAt: integer('updated_at', { mode: 'timestamp' }).notNull(),
-});
-
 export const requestLogs = sqliteTable('request_logs', {
   id: text('id').primaryKey(),
   requestId: text('request_id').notNull(),
@@ -255,8 +242,6 @@ export type RequestLog = typeof requestLogs.$inferSelect;
 export type NewRequestLog = typeof requestLogs.$inferInsert;
 export type ApiKeyEvent = typeof apiKeyEvents.$inferSelect;
 export type NewApiKeyEvent = typeof apiKeyEvents.$inferInsert;
-export type GatewayCredential = typeof gatewayCredentials.$inferSelect;
-export type NewGatewayCredential = typeof gatewayCredentials.$inferInsert;
 export type Provider = typeof providers.$inferSelect;
 export type NewProvider = typeof providers.$inferInsert;
 export type ProviderCredential = typeof providerCredentials.$inferSelect;

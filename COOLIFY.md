@@ -10,6 +10,6 @@ Use the repository Dockerfile or `docker-compose.yaml` in Coolify. The applicati
 4. Configure the environment variables listed in [the deployment guide](./docs/coolify-deployment.md).
 5. Deploy, then confirm `GET /health` returns HTTP 200.
 
-Set `TRUST_PROXY=true` and `COOKIE_SECURE=true` for the Coolify HTTPS proxy. Use a persistent, secret `APP_ENCRYPTION_KEY`, `SESSION_SECRET`, and `GATEWAY_KEY`; rotating or losing the encryption key prevents access to existing encrypted provider credentials.
+Set `TRUST_PROXY=true` and `COOKIE_SECURE=true` for the Coolify HTTPS proxy. Use one persistent, 32+ character `GATEWAY_KEY`. It is the only client key and derives an independent credential-encryption key; do not replace it after provider credentials are stored.
 
-The Docker Compose file sets operational defaults, but it does not inject the encryption or session secrets. Provide them through Coolify's environment configuration.
+The Docker Compose file sets operational defaults, but it does not inject deployment secrets. Provide `INITIAL_ADMIN_PASSWORD` for first setup and `GATEWAY_KEY` through Coolify's environment configuration.

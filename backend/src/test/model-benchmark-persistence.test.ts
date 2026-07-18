@@ -3,13 +3,14 @@ import { eq } from 'drizzle-orm';
 import { modelBenchmarkResults, providerModels } from '../db/schema.js';
 import { ProviderService } from '../providers/provider-service.js';
 import { ModelBenchmarkService } from '../services/model-benchmark-service.js';
+import { streamManager } from '../services/stream-manager.js';
 import { buildTestApp } from './helpers.js';
 
 const originalFetch = global.fetch;
 
 describe('benchmark persistence', () => {
   beforeEach(() => { global.fetch = vi.fn(); });
-  afterEach(() => { global.fetch = originalFetch; });
+  afterEach(() => { global.fetch = originalFetch; vi.restoreAllMocks(); });
 
   it('atomically replaces the one saved result with success, rate-limit, and failure outcomes', async () => {
     const { db } = await buildTestApp();
@@ -23,6 +24,7 @@ describe('benchmark persistence', () => {
       id: 'health-model', providerId: provider.id, upstreamModelId: 'model-health', supportsChat: true, createdAt: now, updatedAt: now,
     });
     const benchmark = new ModelBenchmarkService(db);
+    const broadcast = vi.spyOn(streamManager, 'broadcast');
 
     vi.mocked(global.fetch).mockResolvedValueOnce(new Response(JSON.stringify({ choices: [] }), { status: 200 }));
     await benchmark.benchmark(provider.id, ['model-health']);
@@ -41,6 +43,8 @@ describe('benchmark persistence', () => {
     rows = await db.select().from(modelBenchmarkResults).where(eq(modelBenchmarkResults.providerModelId, 'health-model'));
     expect(rows).toHaveLength(1);
     expect(rows[0]).toMatchObject({ outcome: 'failed', httpStatus: 503 });
+    expect(broadcast).toHaveBeenCalledWith(expect.objectContaining({ type: 'benchmark_started', flowType: 'benchmark' }));
+    expect(broadcast).toHaveBeenCalledWith(expect.objectContaining({ type: 'benchmark_completed', flowType: 'benchmark', success: false }));
   });
 
   it('persists only a completed sequential result and skips a model cancelled in flight', async () => {

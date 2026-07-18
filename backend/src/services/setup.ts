@@ -1,24 +1,32 @@
 import { eq } from 'drizzle-orm';
 import { config } from '../config.js';
-import { hashPassword, hashGatewayKey, generateSecureToken } from '../crypto/index.js';
+import { hashPassword, hashGatewayKey, verifyGatewayKey, generateSecureToken } from '../crypto/index.js';
 import { settings } from '../db/schema.js';
 import type { Db } from '../db/index.js';
 
 export async function setupAdmin(db: Db): Promise<string | undefined> {
   const existing = await db.query.settings.findFirst();
-  if (existing) return undefined;
+  if (existing) {
+    // The deployment environment is authoritative for the one router key.
+    // Older databases may contain a generated or prior dashboard key; update
+    // only its Argon2 verifier so a normal redeploy can start successfully.
+    // Provider secrets remain in SQLite and can be re-encrypted through the
+    // one-time Settings migration if they used the legacy encryption scheme.
+    if (!await verifyGatewayKey(existing.gatewayKeyHash, config.gatewayKey)) {
+      await db.update(settings).set({
+        gatewayKeyHash: await hashGatewayKey(config.gatewayKey),
+        updatedAt: new Date(),
+      }).where(eq(settings.id, existing.id));
+    }
+    return undefined;
+  }
 
   const adminPassword = config.initialAdminPassword;
   if (!adminPassword) {
     throw new Error('INITIAL_ADMIN_PASSWORD is required for first setup');
   }
 
-  let gatewayKeyWithPrefix = '';
-  if (config.gatewayKey) {
-    gatewayKeyWithPrefix = config.gatewayKey;
-  } else if (config.nodeEnv === 'test') {
-    gatewayKeyWithPrefix = `mimo_${generateSecureToken(32)}`;
-  }
+  const gatewayKeyWithPrefix = config.gatewayKey || (config.nodeEnv === 'test' ? `api_router_${generateSecureToken(32)}` : '');
 
   await db.insert(settings).values({
     id: 'default',

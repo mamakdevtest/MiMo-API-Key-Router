@@ -31,7 +31,6 @@ export async function buildTestApp() {
 
   const app = Fastify({ logger: false, trustProxy: false });
   await app.register(cookie, {
-    secret: config.sessionSecret,
     parseOptions: { httpOnly: true, secure: false, sameSite: 'lax', path: '/' },
   });
 

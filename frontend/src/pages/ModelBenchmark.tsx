@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { api } from '@/lib/api';
 import { useToast } from '@/hooks/use-toast';
+import { LiveFlowDiagram } from '@/components/LiveFlowDiagram';
 
 type BenchmarkReport = Awaited<ReturnType<typeof api.providers.benchmarkModels>>;
 
@@ -141,6 +142,8 @@ export function ModelBenchmark() {
           ) : null}
         </CardContent>
       </Card>
+
+      <LiveFlowDiagram mode="benchmark" title="Live Model Test Flow" />
 
       {displayed && summary && (
         <>

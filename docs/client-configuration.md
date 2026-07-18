@@ -1,6 +1,6 @@
 # Client configuration
 
-Use the router key (`GATEWAY_KEY` or an active temporary router key), never an upstream provider credential. Find valid model IDs from `GET /v1/models`.
+Use the one permanent router key (`GATEWAY_KEY`), never an upstream provider credential. Find valid model IDs from `GET /v1/models`.
 
 ## OpenAI-compatible clients
 

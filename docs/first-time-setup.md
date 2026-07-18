@@ -16,9 +16,7 @@ cp .env.example .env
 Set these values in `.env` before the first start:
 
 - `INITIAL_ADMIN_PASSWORD`
-- `GATEWAY_KEY`
-- `APP_ENCRYPTION_KEY` (32+ characters)
-- `SESSION_SECRET` (32+ characters)
+- `GATEWAY_KEY` (32+ characters; keep it permanent)
 
 On npm 12+, approve the repository's native build scripts if npm reports blocked scripts:
 
@@ -33,7 +31,7 @@ Start both services:
 npm run dev
 ```
 
-The API is `http://localhost:4000`; the development dashboard is `http://localhost:4173`. Migrations run automatically at startup, so no separate migration command is necessary for normal setup. Keep the local `DATABASE_URL` as `file:./data/mimo-router.sqlite`; `/data` is the Docker-only persistent volume path.
+The API is `http://localhost:4000`; the development dashboard is `http://localhost:4173`. Migrations run automatically at startup, so no separate migration command is necessary for normal setup. Keep the local `DATABASE_URL` as `file:./data/api-router.sqlite`; `/data` is the Docker-only persistent volume path.
 
 ## Configure providers
 

@@ -1,5 +1,5 @@
 {
-  "name": "@mimo/shared",
+  "name": "@api-router/shared",
   "version": "1.0.0",
   "private": true,
   "type": "module",

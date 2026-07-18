@@ -78,6 +78,6 @@ describe('Authentication', () => {
       headers: { 'x-csrf-token': session },
     });
     expect(res.statusCode).toBe(200);
-    expect(res.payload).not.toContain('mimo_');
+    expect(res.payload).not.toContain('test-gateway-key');
   });
 });

@@ -10,17 +10,15 @@ Set these values in Coolify secrets/environment settings:
 NODE_ENV=production
 HOST=0.0.0.0
 PORT=4000
-DATABASE_URL=file:/data/mimo-router.sqlite
+DATABASE_URL=file:/data/api-router.sqlite
 INITIAL_ADMIN_PASSWORD=strong-first-setup-password
 GATEWAY_KEY=long-random-client-key
-APP_ENCRYPTION_KEY=random-32-plus-character-secret
-SESSION_SECRET=random-32-plus-character-secret
 TRUST_PROXY=true
 COOKIE_SECURE=true
 LOG_LEVEL=info
 ```
 
-`INITIAL_ADMIN_PASSWORD` is required only while the database is first initialised. Keep the other secret values stable. In particular, changing `APP_ENCRYPTION_KEY` makes existing provider credentials unreadable.
+`INITIAL_ADMIN_PASSWORD` is required only while the database is first initialised. Keep `GATEWAY_KEY` stable after that point: it is the one permanent client key and derives the encryption key for stored provider credentials. No additional encryption or session-signing environment secret is required.
 
 ## Deploy and verify
 

@@ -18,11 +18,11 @@ Supported provider adapters: Xiaomi MiMo, Featherless, OrcaRouter, and custom Op
 ```bash
 npm install
 cp .env.example .env
-# Set INITIAL_ADMIN_PASSWORD, GATEWAY_KEY, APP_ENCRYPTION_KEY, and SESSION_SECRET.
+# Set INITIAL_ADMIN_PASSWORD and a permanent, 32+ character GATEWAY_KEY.
 npm run dev
 ```
 
-The backend is available at `http://localhost:4000`; Vite serves the local dashboard at `http://localhost:4173`. Local development writes SQLite data to `./data/mimo-router.sqlite`; Docker Compose overrides this with its persistent `/data` volume.
+The backend is available at `http://localhost:4000`; Vite serves the local dashboard at `http://localhost:4173`. Local development writes SQLite data to `./data/api-router.sqlite`; Docker Compose overrides this with its persistent `/data` volume.
 
 ### Claude Code knowledge graph
 
@@ -57,7 +57,7 @@ npm install-scripts approve better-sqlite3 argon2 esbuild
 
 For example, a provider with slug `orca-main` and upstream model `orcarouter/auto` is addressed as `orca-main/orcarouter/auto`.
 
-`GATEWAY_KEY` is stored as a hash when a database is initialized. Setting a new value in `.env` does not replace the gateway key of an existing database; rotate that key from the dashboard instead.
+`GATEWAY_KEY` is stored as a hash when a database is initialized. It is the one permanent client key and is intentionally not rotatable from the dashboard. The deployment value is authoritative on startup, so an older database hash is reconciled automatically. Keep the same value across deployments because it also derives a separate encryption key for stored provider credentials.
 
 ## Model benchmark
 
@@ -96,17 +96,19 @@ Copy [.env.example](./.env.example) and set every required secret before product
 | Variable | Purpose |
 |---|---|
 | `INITIAL_ADMIN_PASSWORD` | Required only to initialise a new database; remove after initial setup |
-| `GATEWAY_KEY` | Stable router key clients use; set it before first boot |
-| `APP_ENCRYPTION_KEY` | 32+ character key that encrypts provider credentials; never change it without a credential migration |
-| `SESSION_SECRET` | 32+ character admin-session signing secret; keep it stable |
-| `DATABASE_URL` | SQLite location; use `file:./data/mimo-router.sqlite` locally and `file:/data/mimo-router.sqlite` in containers |
+| `GATEWAY_KEY` | Permanent 32+ character router key clients use; it derives a separate provider-credential encryption key |
+| `DATABASE_URL` | SQLite location; use `file:./data/api-router.sqlite` locally and `file:/data/api-router.sqlite` in containers |
 | `MAX_UPSTREAM_ATTEMPTS` | Upper bound for one gateway request; default `120`, sized for Vercel mix-route key retries |
 | `HOST`, `PORT`, `APP_NAME`, `LOG_LEVEL` | Server runtime settings |
 | `TRUST_PROXY`, `COOKIE_SECURE` | Enable for HTTPS behind a trusted reverse proxy |
 | `SESSION_MAX_AGE_SECONDS` | Admin-session lifetime, default `86400` |
 | `ALLOW_PRIVATE_PROVIDER_URLS` | Keep `false` unless private upstream URLs are intentionally required |
 
-The legacy `MIMO_*` variables are no longer part of deployment configuration. Provider URLs and authentication are managed per provider in the dashboard.
+Provider URLs and authentication are managed per provider in the dashboard.
+
+### Upgrading an existing deployment
+
+The router keeps its SQLite volume and request history across redeployments. If an older deployment stored provider credentials using a separate encryption environment value, open **Settings → Preserve Existing Provider Credentials** after the upgrade and enter the previous value once. It is used only in memory to re-encrypt stored credentials for the permanent router key; it is not saved or logged.
 
 ## Docker
 

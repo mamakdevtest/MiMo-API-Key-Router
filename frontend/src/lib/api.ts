@@ -214,7 +214,6 @@ export const api = {
       benchmark: ModelBenchmark | null;
     }>>('/admin/models'),
   },
-  rotateGatewayKey: () => fetchJson<{ key: string }>('/admin/rotate-gateway-key', { method: 'POST', body: '{}' }),
   changePassword: (currentPassword: string, newPassword: string) =>
     fetchJson<{ success: boolean }>('/admin/change-password', { method: 'POST', body: JSON.stringify({ currentPassword, newPassword }) }),
   logs: {
@@ -237,32 +236,48 @@ export const api = {
         estimatedCost?: number;
       }>>(`/admin/logs?limit=${limit}&offset=${offset}`),
   },
-  tempKeys: {
-    list: () =>
-      fetchJson<Array<{
-        id: string;
-        label: string;
-        maskedKey: string;
-        expiresAt: string | null;
-        isExpired: boolean;
-        maxRequests: number | null;
-        requestCount: number;
-        isActive: boolean;
-        createdAt: string;
-      }>>('/admin/temp-keys'),
-    create: (data: { label: string; expiresInMinutes?: number; maxRequests?: number }) =>
-      fetchJson<{
-        id: string;
-        key: string;
-        label: string;
-        maskedKey: string;
-        expiresAt: string | null;
-        maxRequests: number | null;
-        message: string;
-      }>('/admin/temp-keys', { method: 'POST', body: JSON.stringify(data) }),
-    delete: (id: string) => fetchJson<{ success: boolean }>(`/admin/temp-keys/${id}`, { method: 'DELETE' }),
-    revoke: (id: string) => fetchJson<{ success: boolean }>(`/admin/temp-keys/${id}/revoke`, { method: 'POST', body: '{}' }),
-    reactivate: (id: string) => fetchJson<{ success: boolean }>(`/admin/temp-keys/${id}/reactivate`, { method: 'POST', body: '{}' }),
+  credentialEncryption: {
+    migrate: (legacyKey: string) => fetchJson<{
+      success: boolean;
+      providerCredentials: number;
+      legacyApiKeys: number;
+    }>('/admin/credential-encryption/migrate', { method: 'POST', body: JSON.stringify({ legacyKey }) }),
+  },
+  liveFlow: {
+    list: (limit = 20) => fetchJson<Array<{
+      id: string;
+      requestId: string;
+      timestamp: string;
+      route: string;
+      model: string | null;
+      upstreamModelId: string | null;
+      providerName: string | null;
+      statusCode: number | null;
+      latencyMs: number;
+      streaming: boolean;
+      fallback: boolean;
+      clientIp: string | null;
+      promptTokens: number | null;
+      completionTokens: number | null;
+      totalTokens: number | null;
+      estimatedCost: number | null;
+      attemptCount: number | null;
+      failoverCount: number | null;
+      attempts: Array<{
+        attemptNumber: number;
+        providerName: string | null;
+        credentialName: string | null;
+        upstreamModelId: string | null;
+        startedAt: string;
+        completedAt: string | null;
+        latencyMs: number | null;
+        httpStatus: number | null;
+        result: string | null;
+        errorCode: string | null;
+        errorMessage: string | null;
+        retryable: boolean;
+      }>;
+    }>>(`/admin/live-flow?limit=${limit}`),
   },
   // ── Provider management ──────────────────────────────────
   providers: {

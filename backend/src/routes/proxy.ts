@@ -5,7 +5,7 @@ import { KeyRouter } from '../services/key-router.js';
 import { logRequest } from '../services/request-logger.js';
 import { getClientIp } from '../auth/index.js';
 import { streamManager } from '../services/stream-manager.js';
-import { ALL_MODELS } from '@mimo/shared';
+import { ALL_MODELS } from '@api-router/shared';
 
 const ANTHROPIC_ALLOWLIST = new Set([
   'anthropic-version',

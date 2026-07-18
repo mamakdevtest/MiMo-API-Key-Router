@@ -77,4 +77,10 @@ describe('Provider and model benchmark migrations', () => {
     const indexes = client.prepare(`PRAGMA index_list(model_benchmark_results)`).all() as Array<{ name: string }>;
     expect(indexes.map((index) => index.name)).toContain('model_benchmark_results_tested_at_idx');
   });
+
+  it('drops the removed temporary gateway credential table', () => {
+    const { client } = freshDb();
+    const table = client.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'gateway_credentials'").get();
+    expect(table).toBeUndefined();
+  });
 });

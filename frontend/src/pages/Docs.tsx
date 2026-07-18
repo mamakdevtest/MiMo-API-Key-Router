@@ -64,7 +64,7 @@ export function Docs() {
             <li>Use <strong>Test</strong> to validate a provider key.</li>
             <li>Use <strong>Sync Models</strong> to load that provider's models into the catalog.</li>
             <li>Open <Link to="/model-catalog" className="text-primary hover:underline">Model Catalog</Link> and copy the prefixed public model IDs.</li>
-            <li>Rotate or create a router key from <Link to="/keys" className="text-primary hover:underline">Router Keys</Link> and give only that key to clients.</li>
+            <li>Open <Link to="/keys" className="text-primary hover:underline">Router Keys</Link> to confirm the deployment-managed permanent key, then give only that key to clients.</li>
           </ol>
         </CardContent>
       </Card>
@@ -152,7 +152,7 @@ API Key: ${routerKey}`} />
         <CardContent className="space-y-3 text-sm text-muted-foreground">
           <p><strong>Router key:</strong> the client-facing key used by Open WebUI, Claude Code, temp-mail flows, and other integrations.</p>
           <p><strong>Provider keys:</strong> the real upstream keys stored only inside each provider record. They are health-checked, disabled, cooled down, or failed over per provider.</p>
-          <p><strong>Temporary router keys:</strong> shorter-lived client keys you can generate from <Link to="/temp-keys" className="text-primary hover:underline">Temp Keys</Link> for external consumers.</p>
+          <p><strong>Router key:</strong> clients use the single deployment-managed <code>GATEWAY_KEY</code>. Provider credentials are never returned by the dashboard or gateway.</p>
         </CardContent>
       </Card>
 
@@ -163,7 +163,7 @@ API Key: ${routerKey}`} />
         <CardContent className="space-y-4 text-sm text-muted-foreground">
           <p>Check the repository docs for deployment, security, and troubleshooting details. This page focuses on the new simplified provider-prefixed routing flow.</p>
           <a
-            href="https://github.com/mamakdevtest/MiMo-API-Key-Router/tree/main/docs"
+            href="https://github.com/mamakdevtest/API-Router/tree/main/docs"
             target="_blank"
             rel="noreferrer"
             className="inline-flex items-center text-primary hover:underline"
